@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run Cost Profile</title>
+<style>
+  :root { --bg:#fbfbfa; --fg:#1d1d1f; --muted:#6b6b70; --line:#e3e3e0; --bar:#5e6ad2; --bar2:#26b5ce; --bar3:#f2994a; --card:#ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141416; --fg:#ededf0; --muted:#9a9aa2; --line:#2c2c31; --card:#1c1c20; } }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, system-ui, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 28px 0 8px; }
+  .muted { color: var(--muted); }
+  .tiles { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 16px; }
+  .tile { background: var(--card); border:1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .tile b { display:block; font-size: 18px; font-variant-numeric: tabular-nums; }
+  table { width:100%; border-collapse: collapse; background: var(--card); border:1px solid var(--line); border-radius: 8px; overflow:hidden; }
+  th, td { text-align:left; padding: 6px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; }
+  td.num, th.num { text-align: right; }
+  .wrap { overflow-x: auto; }
+  .bar { height: 8px; background: var(--bar); border-radius: 4px; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  #empty { padding: 40px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Run cost profile</h1>
+  <div id="sub" class="muted"></div>
+  <div id="empty" hidden>
+    <p>No profile is embedded. Open a JSON file written by <code>profile.py</code>:</p>
+    <input type="file" id="file" accept="application/json">
+  </div>
+  <div id="report" hidden>
+    <div class="tiles" id="tiles"></div>
+    <h2>By model</h2><div class="wrap"><table id="models"></table></div>
+    <h2>By role</h2><div class="wrap"><table id="roles"></table></div>
+    <h2>Tickets</h2><div class="wrap"><table id="tickets"></table></div>
+    <h2>Coordinator context</h2>
+    <p class="muted">Prompt size of each coordinator request: input plus cache reads and writes.</p>
+    <div class="wrap"><svg id="ctx" width="100%" height="160" viewBox="0 0 1000 160" preserveAspectRatio="none"></svg></div>
+    <h2>Workers</h2><div class="wrap"><table id="workers"></table></div>
+  </div>
+</main>
+<script>
+const EMBEDDED = /*PROFILE_DATA*/null;
+const money = v => v == null ? "n/a" : "$" + v.toFixed(2);
+const pct = v => v == null ? "n/a" : Math.round(v * 100) + "%";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function table(el, head, rows) {
+  el.innerHTML = "<tr>" + head.map(h => `<th class="${h[1]||""}">${esc(h[0])}</th>`).join("") + "</tr>" +
+    rows.map(r => "<tr>" + r.map((c, i) => `<td class="${head[i][1]||""}">${c}</td>`).join("") + "</tr>").join("");
+}
+
+function render(p) {
+  document.getElementById("empty").hidden = true;
+  document.getElementById("report").hidden = false;
+  document.getElementById("sub").textContent =
+    `Run ${p.run_id} · API list-price proxy, prices as of ${p.prices_as_of}` +
+    (p.missing_transcripts && p.missing_transcripts.length ? ` · ${p.missing_transcripts.length} worker(s) had no transcript` : "");
+  const tiles = [
+    ["Cost per merged ticket", money(p.cost_per_merged_ticket)],
+    ["Merged tickets", p.merged_tickets],
+    ["Total", money(p.total_cost)],
+    ["Coordinator", money(p.coordinator_cost)],
+    ["Escalations", p.escalations],
+    ["Round-one approval", pct(p.review_round_one_approval)],
+    ["Slot use", pct(p.slots.utilisation)],
+    ["Peak workers", p.slots.peak_concurrency],
+  ];
+  document.getElementById("tiles").innerHTML = tiles.map(t => `<div class="tile"><span class="muted">${esc(t[0])}</span><b>${esc(t[1])}</b></div>`).join("");
+  const max = Math.max(1e-9, ...Object.values(p.by_model).map(v => v.cost));
+  table(document.getElementById("models"), [["Model"], ["Messages", "num"], ["Cost", "num"], [""]],
+    Object.entries(p.by_model).sort((a, b) => b[1].cost - a[1].cost).map(([m, v]) =>
+      [esc(m), v.messages, money(v.cost), `<div class="bar" style="width:${(v.cost / max * 100).toFixed(1)}%"></div>`]));
+  table(document.getElementById("roles"), [["Role"], ["Cost", "num"]],
+    Object.entries(p.by_role).sort((a, b) => b[1] - a[1]).map(([r, c]) => [esc(r), money(c)]));
+  table(document.getElementById("tickets"),
+    [["Ticket"], ["Merged"], ["Workers", "num"], ["Build models"], ["Escalated"], ["Review rounds", "num"], ["Round one"], ["Cost", "num"]],
+    p.tickets.map(t => [esc(t.ticket), t.merged ? "yes" : "", t.workers, esc((t.build_models || []).join(" → ")),
+      t.escalated ? "yes" : "", t.review_rounds, t.round_one_approved == null ? "" : (t.round_one_approved ? "approved" : "changes"), money(t.cost)]));
+  table(document.getElementById("workers"),
+    [["Task"], ["Role"], ["Routed"], ["Models used"], ["Transcripts", "num"], ["Outcome"], ["Cost", "num"]],
+    p.workers.map(w => [esc(w.task_title), esc(w.role), esc(w.routed_model), esc(Object.keys(w.models).join(", ")),
+      w.transcripts, esc(w.outcome), money(w.cost)]));
+  const pts = (p.coordinator_context || []).map(c => c.prompt);
+  const svg = document.getElementById("ctx");
+  if (!pts.length) { svg.innerHTML = '<text x="10" y="80">No coordinator transcript given (pass --coordinator).</text>'; return; }
+  const top = Math.max(...pts);
+  const d = pts.map((v, i) => `${i ? "L" : "M"}${(i / Math.max(1, pts.length - 1) * 1000).toFixed(1)},${(150 - v / top * 140).toFixed(1)}`).join(" ");
+  svg.innerHTML = `<path d="${d}" fill="none" stroke="var(--bar)" stroke-width="2" vector-effect="non-scaling-stroke"/>` +
+    `<text x="4" y="14">${top.toLocaleString()} tokens</text><text x="4" y="156">${pts.length} requests</text>`;
+}
+
+if (EMBEDDED) render(EMBEDDED);
+else {
+  document.getElementById("empty").hidden = false;
+  document.getElementById("file").addEventListener("change", e => {
+    const f = e.target.files[0]; if (!f) return;
+    f.text().then(t => render(JSON.parse(t)));
+  });
+}
+</script>
+</body>
+</html>
