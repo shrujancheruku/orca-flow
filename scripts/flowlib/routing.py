@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+from . import config, estimating
+
 HEADING = "model routing"
 ROLES = ("coordinator", "scout", "build", "merge", "check", "review", "fix")
 
@@ -59,6 +61,19 @@ def parse_table(markdown: str) -> dict:
     return table
 
 
+def ticket_facts(cfg: dict, labels, body: str = "", paths=()) -> dict:
+    """Size and risk for one ticket: the `size:` label, and the `risk` label or any configured risk path.
+
+    Paths come from --paths and from the ticket body; a path named in the body
+    raises the model even if the ticket only mentions it, which errs safe.
+    """
+    reasons = []
+    if config.has_risk_label(cfg, labels):
+        reasons.append(f"label {cfg['labels']['risk']}")
+    reasons += estimating.path_hints("\n".join([body or ""] + list(paths)), cfg)
+    return {"size": config.size_from_labels(cfg, labels), "risk": bool(reasons), "risk_reasons": reasons}
+
+
 def candidates(role: str, size=None, risk: bool = False, variant=None) -> list:
     """Most specific key first."""
     keys = []
@@ -98,11 +113,20 @@ def worker_flags(choice: dict, models: dict) -> list:
     return flags
 
 
-def task_title(ticket: str, role: str, choice: dict) -> str:
-    return f"{ticket} · {role} · {choice['model']}"
+def ticket_id(ref) -> str:
+    """123, "123" or "#123" -> "#123". Anything else (a Linear id such as ABC-1) is left as it is."""
+    text = str(ref).strip()
+    return f"#{text}" if text.isdigit() else text
 
 
-TITLE_RE = re.compile(r"^(?P<ticket>[A-Z][A-Z0-9]*-\d+|[\w-]+)\s*·\s*(?P<role>[\w-]+)\s*·\s*(?P<model>[\w.-]+)")
+def task_title(ticket, role: str, choice: dict) -> str:
+    """`#123 · build · haiku`. The profiler parses this shape."""
+    return f"{ticket_id(ticket)} · {role} · {choice['model']}"
+
+
+# `#123` is the shape this plugin writes. The wider alternative keeps the Linear
+# adapter's `ABC-123` titles and a bare milestone name readable.
+TITLE_RE = re.compile(r"^(?P<ticket>#\d+|[A-Z][A-Z0-9]*-\d+|[\w-]+)\s*·\s*(?P<role>[\w-]+)\s*·\s*(?P<model>[\w.-]+)")
 
 
 def parse_task_title(title: str):

@@ -1,29 +1,29 @@
 # Orchestration
 
-How a spec gets built here. `/flow:build` follows this file.
+How a spec gets built here. `/flow:build` follows this file. Tickets are GitHub issues, a build milestone is a GitHub Milestone, and `gh` is the only tracker tool (Orca has no GitHub issue commands).
 
 ## Layers
 
 - **Procedure:** Matt Pocock's `/implement-spec`, unmodified. Read its `SKILL.md` and follow it.
 - **Policy:** this file. Where it and `implement-spec` differ, this file wins.
-- **Executor:** Orca. The implementer, merger, fixer and reviewer are Orca workers, started with `orca orchestration worker-start`. Short read-only jobs (exploration, `code-review`'s two reviewers) are Claude subagents inside a worker.
-- **Tracker:** Linear. See `docs/agents/issue-tracker.md`.
+- **Executor:** Orca. The implementer, merger, checker, fixer and reviewer are Orca workers. Short read-only jobs (exploration, `code-review`'s two reviewers) are Claude subagents inside a worker.
+- **Tracker:** GitHub Issues. See `docs/agents/issue-tracker.md`.
 - **Measurement:** `{{FLOW_SCRIPTS}}/profile.py`.
 
 ## Model routing
 
-Before every `worker-start`, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role> --ticket {{TEAM_KEY}}-<n> --lookup` and pass the `flags` and `task_title` it prints. Read the row from this table each time; never route from memory. Always pass `--model`: the user's own settings default to Opus.
+Before every worker, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role> --ticket <n> --lookup` and pass the `flags` and `task_title` it prints. Read the row from this table each time; never route from memory. Always pass `--model`: the user's own settings default to Opus.
 
 | Key | Role | Model | Effort | Notes |
 |---|---|---|---|---|
 | coordinator | Coordinator | opus | medium | The session running `/flow:build`. |
 | scout | Exploration or scout | haiku | low | A subagent inside a worker. |
-| build.S | Implementer, Estimate S, no `risk` | haiku | | Escalates once; see Escalation. |
-| build.S.risk | Implementer, Estimate S, `risk` | sonnet | medium | |
-| build.M | Implementer, Estimate M | sonnet | medium | |
-| build.M.risk | Implementer, Estimate M, `risk` | sonnet | high | |
-| build.L | Implementer, Estimate L | sonnet | high | |
-| build.L.risk | Implementer, Estimate L, `risk` | opus | | |
+| build.S | Implementer, size S, no `risk` | haiku | | Escalates once; see Escalation. |
+| build.S.risk | Implementer, size S, `risk` | sonnet | medium | |
+| build.M | Implementer, size M | sonnet | medium | |
+| build.M.risk | Implementer, size M, `risk` | sonnet | high | |
+| build.L | Implementer, size L | sonnet | high | |
+| build.L.risk | Implementer, size L, `risk` | opus | | |
 | build.escalated | Implementer after an escalation | sonnet | medium | A fresh worker on the same branch. |
 | merge | Merger | haiku | low | |
 | merge.conflict | Merger on a real conflict | sonnet | medium | |
@@ -32,9 +32,19 @@ Before every `worker-start`, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role
 | review.risk | Integration `code-review`, milestone has `risk` tickets | opus | | |
 | fix | Fixer | sonnet | medium | |
 
-Size comes from the Linear Estimate, banded by `estimate_scale` in `docs/agents/linear.json`. A ticket with no estimate routes as M and `route.py` warns; run `estimate.py propose` for the founder to approve.
+Size comes from the issue's `{{SIZE_S}}`, `{{SIZE_M}}` or `{{SIZE_L}}` label. The `{{RISK_LABEL}}` label, or a ticket that names a path in `risk_paths` in `docs/agents/flow.json`, raises the model to the `.risk` row. A ticket with no size label routes as M and `route.py` warns; run `estimate.py propose` for the founder to approve sizes.
 
-Put the model in the Orca task title: `{{TEAM_KEY}}-123 · build · haiku`. The profiler reads it.
+For `review`, pass the integration PR's number as `--ticket`.
+
+Put the model in the Orca task title: `#123 · build · haiku`. The profiler reads it.
+
+## Starting a worker
+
+1. `orca reference find https://github.com/{{REPO}}/issues/<n> --json` first. If a workspace or agent is already attached to the issue, resume or read it instead of starting another. (Orca wants the issue URL; a bare number is not supported.)
+2. `orca worktree create --issue <n> --name "<n>-<slug>" --base-branch integration/<milestone-slug> --no-parent --json` makes the ticket's worktree and links it to the issue.
+3. `orca orchestration worker-start --worktree issue:<n> --agent claude --task-title "<task_title from route.py>" <flags from route.py> --spec-file -`, with the brief on stdin. The brief holds context pointers: the issue URL, the spec, the exploration notes, the integration branch.
+
+The merger, checker, fixer and reviewer start the same way: a `--task-title` of the shape `#<n> · <role> · <model>`, and the flags from `route.py`.
 
 ## Escalation
 
@@ -43,7 +53,7 @@ Put the model in the Orca task title: `{{TEAM_KEY}}-123 · build · haiku`. The 
    - CI fails on its branch a second time;
    - review asks for changes a second time.
 2. Start a fresh worker with `route.py --role build --variant escalated` on the same branch. Tell it what the first worker tried.
-3. A second escalation goes to the founder: comment on the Linear ticket, add `needs-info`, move it to Triage.
+3. A second escalation goes to the founder: comment on the issue, add `needs-info`, remove `ready-for-agent`.
 
 ## Holds
 
@@ -57,15 +67,19 @@ Overlap means wait. Shared registries (one file per entry plus an index) do not 
 
 ## Frontier
 
-A ticket is on the frontier when it is in Todo, unassigned, and every blocker is In Review, Done or Canceled. In Review counts as done for blocking: its work is already on the integration branch.
+A ticket is on the frontier when it is open, labelled `ready-for-agent`, unassigned, has no Orca workspace on it (`orca reference find`), and every blocker is closed or labelled `{{INTEGRATED_LABEL}}`. An `{{INTEGRATED_LABEL}}` blocker counts as done: its work is already on the integration branch, though the issue stays open until the integration PR merges into main.
 
-`implement-spec` warns that the frontier goes stale. Track merges yourself: when a merger lands a ticket, move it to In Review and recompute.
+Blockers are the issue's native dependencies (`gh api repos/{{REPO}}/issues/<n>/dependencies/blocked_by`), or the `Blocked by: #<n>` line at the top of the body where dependencies are off.
+
+`implement-spec` warns that the frontier goes stale because the issues it waits on stay open. Track merges yourself: when a merger lands a ticket, add `{{INTEGRATED_LABEL}}` to it and recompute.
 
 ## Branches and merging
 
-- One integration branch and one draft PR per milestone (Linear project).
-- A ticket merged into the integration branch moves to In Review.
-- The integration PR body has one `Fixes {{TEAM_KEY}}-<n>` line per ticket. When the founder merges it, Linear's GitHub integration moves those tickets to Done.
+- A build milestone is a GitHub Milestone. Its tickets carry that milestone.
+- One integration branch (`integration/<milestone-slug>`) and one draft PR into main per milestone. Open the draft after the first merge, with `--milestone`.
+- The Haiku `check` worker passes a ticket before it merges into the integration branch. A failed check goes back to the implementer; it is not merged.
+- A ticket merged into the integration branch gets the `{{INTEGRATED_LABEL}}` label (`gh issue edit <n> --add-label {{INTEGRATED_LABEL}}`). Do not close it.
+- The integration PR body has one `Closes #<n>` line per ticket, kept current as tickets land. When the founder merges the PR into main, GitHub closes those tickets.
 - The founder merges integration PRs.
 
 ## Automerge
@@ -101,11 +115,11 @@ A worker stops and reports with `orca orchestration send --type escalation` for 
 At the end of each milestone, run:
 
 ```
-python3 {{FLOW_SCRIPTS}}/profile.py --run <run id> --coordinator <coordinator transcript>
+python3 {{FLOW_SCRIPTS}}/profile.py --run <run id> --coordinator <coordinator transcript> --pr <integration PR number> --apply
 ```
 
-Read the HTML it writes. Post the summary to the milestone's project with `--project-update <project id> --apply`.
+Read the HTML it writes. `--pr ... --apply` has the coordinator post the summary as a comment on the integration PR. The profile is unverified until the first real run.
 
 ## Slack
 
-Agents write to Linear only. The Linear Slack app posts to `#{{SLACK_PREFIX}}-work` and `#{{SLACK_PREFIX}}-needs-you`; the GitHub Slack app posts to `#{{SLACK_PREFIX}}-prs`.
+Agents write to GitHub only. The GitHub Slack app posts for `{{REPO}}`: `#{{SLACK_PREFIX}}-prs` hears pull requests, reviews and comments, and `#{{SLACK_PREFIX}}-needs-you` hears issues labelled `ready-for-human` or `needs-info`.

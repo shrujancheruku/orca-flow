@@ -61,7 +61,7 @@ def build_profile(run_id: str, workers: list, coordinator: dict | None, merged: 
     """
     workers: [{dispatch_id, task_title, started_at, ended_at, outcome, transcripts: [summary]}]
     coordinator: a transcript summary for the coordinator session, or None
-    merged: ticket identifiers that merged in this run
+    merged: ticket ids (`#123`) that merged into the integration branch in this run
     """
     tickets = defaultdict(lambda: {"cost": 0.0, "by_model": {}, "by_role": defaultdict(float), "workers": 0,
                                    "build_models": [], "reviews": []})
@@ -151,8 +151,8 @@ def build_profile(run_id: str, workers: list, coordinator: dict | None, merged: 
     }
 
 
-def project_update_body(profile: dict, prices_as_of: str) -> str:
-    """A short milestone note for a Linear project update."""
+def summary_body(profile: dict, prices_as_of: str) -> str:
+    """A short end-of-milestone note. The coordinator posts it as a comment on the integration PR."""
     def money(v):
         return "n/a" if v is None else f"${v:,.2f}"
 

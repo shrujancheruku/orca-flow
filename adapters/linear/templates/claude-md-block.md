@@ -14,4 +14,4 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 ### Orchestration
 
-Build a spec with `/flow:build`: Matt's `/implement-spec` run on Orca workers, models routed by `route.py` from the table in `docs/agents/orchestration.md`. See `docs/agents/orchestration.md`.
+Build a spec with `/flow:build`: Matt's `/implement-spec` run on Orca workers, models routed by `route_linear.py` from the table in `docs/agents/orchestration.md`. See `docs/agents/orchestration.md`.

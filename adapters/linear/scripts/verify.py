@@ -15,9 +15,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib.config import initiative_name  # noqa: E402
-from flowlib import cli, github, mapping  # noqa: E402
-from flowlib import linear as L  # noqa: E402
+from linearlib.config import initiative_name  # noqa: E402
+from linearlib import cli, github, mapping  # noqa: E402
+from linearlib import linear as L  # noqa: E402
 
 ISSUES_DETAIL = """query($ids: [ID!], $after: String) {
   issues(first: 50, after: $after, filter: { id: { in: $ids } }) {

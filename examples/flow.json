@@ -1,0 +1,13 @@
+{
+  "$schema": "../schema/flow.schema.json",
+  "tracker": "github",
+  "github_repo": "shrujancheruku/look-together",
+  "labels": {
+    "size": { "S": "size:S", "M": "size:M", "L": "size:L" },
+    "risk": "risk",
+    "integrated": "integrated"
+  },
+  "risk_paths": ["packages/records/**", "packages/protocol/**", "infra/**", "**/migrations/**", "**/session/**"],
+  "slack_prefix": "lt",
+  "models": { "haiku": "haiku", "sonnet": "sonnet", "opus": "opus" }
+}

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Propose a size (S, M or L) and a risk flag for unestimated tickets.
 
-  estimate.py propose  asks Haiku, headless on your Claude subscription, about
+  estimate_linear.py propose  asks Haiku, headless on your Claude subscription, about
                        each unestimated open ticket and writes the answers to a
                        proposals file. It never touches Linear.
-  estimate.py apply    reads the proposals file and, with --apply, sets the
+  estimate_linear.py apply    reads the proposals file and, with --apply, sets the
                        estimate (and the risk label) only on entries the
                        founder marked "approved": true.
 
@@ -19,10 +19,12 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts"))
 
-from flowlib import cli, estimating, mapping  # noqa: E402
-from flowlib import linear as L  # noqa: E402
-from flowlib.workspace import Workspace  # noqa: E402
+from flowlib import estimating  # noqa: E402
+from linearlib import cli, mapping  # noqa: E402
+from linearlib import linear as L  # noqa: E402
+from linearlib.workspace import Workspace  # noqa: E402
 
 UNESTIMATED = """query($team: ID!, $after: String) {
   issues(first: 50, after: $after, filter: {
@@ -82,7 +84,7 @@ def propose(args, cfg) -> None:
         with open(args.out, "w") as fh:
             json.dump({"scale": cfg["estimate_scale"], "proposals": proposals}, fh, indent=2)
             fh.write("\n")
-    print(f"\nWrote {args.out}. Set \"approved\": true on the entries you accept, then run `estimate.py apply --apply`.")
+    print(f"\nWrote {args.out}. Set \"approved\": true on the entries you accept, then run `estimate_linear.py apply --apply`.")
 
 
 def apply(args, cfg) -> None:

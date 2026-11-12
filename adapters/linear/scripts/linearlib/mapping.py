@@ -13,6 +13,7 @@ import tempfile
 import uuid
 from collections import Counter
 
+# Frozen: the ids already written to Linear derive from this URL, so renaming the repo must not change it.
 ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/linear-orca-flow")
 
 PROJECT_DESCRIPTION_LIMIT = 255

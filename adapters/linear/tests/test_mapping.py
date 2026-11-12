@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from flowlib import config, mapping
+from linearlib import config, mapping
 
 from .helpers import cfg, issue
 
@@ -23,6 +23,23 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(cfg()["keychain_service"], "other")
         finally:
             del os.environ["LINEAR_KEYCHAIN_SERVICE"]
+
+
+class SharedKeysTest(unittest.TestCase):
+    def test_flow_json_next_to_linear_json_supplies_the_shared_keys(self):
+        import json
+        import tempfile
+
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "flow.json"), "w") as fh:
+            json.dump({"tracker": "linear", "github_repo": "acme/app", "risk_paths": ["infra/**"], "slack_prefix": "app"}, fh)
+        with open(os.path.join(d, "linear.json"), "w") as fh:
+            json.dump({"workspace_id": "ws", "workspace_url_key": "acme", "team": {"key": "ABC", "id": "t"},
+                       "keychain_service": "svc", "initiative": None, "slack_prefix": "own"}, fh)
+        c = config.load(os.path.join(d, "linear.json"))
+        self.assertEqual(c["github_repo"], "acme/app")
+        self.assertEqual(c["risk_paths"], ["infra/**"])
+        self.assertEqual(c["slack_prefix"], "own")
 
 
 class LabelMappingTest(unittest.TestCase):

@@ -52,30 +52,30 @@ class ProfileTest(unittest.TestCase):
             return {"cost": cost, "by_model": {model: {"cost": cost, "messages": 1}}, "contexts": []}
 
         workers = [
-            {"dispatch_id": "d1", "task_title": "ABC-1 · build · haiku", "started_at": "2026-11-10T10:00:00Z",
+            {"dispatch_id": "d1", "task_title": "#1 · build · haiku", "started_at": "2026-11-10T10:00:00Z",
              "ended_at": "2026-11-10T11:00:00Z", "outcome": "stopped", "transcripts": [summ("claude-haiku-4-5", 1.0)]},
-            {"dispatch_id": "d2", "task_title": "ABC-1 · build · sonnet", "started_at": "2026-11-10T11:00:00Z",
+            {"dispatch_id": "d2", "task_title": "#1 · build · sonnet", "started_at": "2026-11-10T11:00:00Z",
              "ended_at": "2026-11-10T12:00:00Z", "outcome": "done", "transcripts": [summ("claude-sonnet-4-6", 3.0)]},
-            {"dispatch_id": "d3", "task_title": "ABC-1 · check · haiku", "started_at": "2026-11-10T12:00:00Z",
+            {"dispatch_id": "d3", "task_title": "#1 · check · haiku", "started_at": "2026-11-10T12:00:00Z",
              "ended_at": "2026-11-10T12:10:00Z", "outcome": "approved", "transcripts": [summ("claude-haiku-4-5", 0.5)]},
-            {"dispatch_id": "d4", "task_title": "ABC-2 · build · sonnet", "started_at": "2026-11-10T10:00:00Z",
+            {"dispatch_id": "d4", "task_title": "#2 · build · sonnet", "started_at": "2026-11-10T10:00:00Z",
              "ended_at": "2026-11-10T12:00:00Z", "outcome": "done", "transcripts": [summ("claude-sonnet-4-6", 2.0)]},
-            {"dispatch_id": "d5", "task_title": "ABC-2 · check · haiku", "started_at": "2026-11-10T12:00:00Z",
+            {"dispatch_id": "d5", "task_title": "#2 · check · haiku", "started_at": "2026-11-10T12:00:00Z",
              "ended_at": "2026-11-10T12:10:00Z", "outcome": "changes requested", "transcripts": [summ("claude-haiku-4-5", 0.5)]},
         ]
-        p = profiler.build_profile("run1", workers, None, ["ABC-1"], slots=2)
+        p = profiler.build_profile("run1", workers, None, ["#1"], slots=2)
         self.assertEqual(p["escalations"], 1)
         self.assertAlmostEqual(p["cost_per_merged_ticket"], 4.5)
         self.assertAlmostEqual(p["review_round_one_approval"], 0.5)
         self.assertEqual(p["slots"]["peak_concurrency"], 2)
         self.assertAlmostEqual(p["by_role"]["build"], 6.0)
-        self.assertIn("Merged tickets: 1", profiler.project_update_body(p, "2026-11-04"))
+        self.assertIn("Merged tickets: 1", profiler.summary_body(p, "2026-11-04"))
 
 
 class EstimatingTest(unittest.TestCase):
     def test_prompt_and_answer(self):
-        prompt = estimating.build_prompt({"identifier": "ABC-1", "title": "Add a field", "description": "Small."}, cfg())
-        self.assertIn("ABC-1: Add a field", prompt)
+        prompt = estimating.build_prompt({"identifier": "#1", "title": "Add a field", "description": "Small."}, cfg())
+        self.assertIn("#1: Add a field", prompt)
         self.assertIn("packages/records/**", prompt)
         self.assertEqual(estimating.parse_answer('Sure: {"size": "s", "risk": false, "reason": "tiny"}'),
                          {"size": "S", "risk": False, "reason": "tiny"})

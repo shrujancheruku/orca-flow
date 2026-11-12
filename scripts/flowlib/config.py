@@ -1,6 +1,8 @@
-"""Load and check docs/agents/linear.json.
+"""Load and check docs/agents/flow.json, the plugin's per-repo config.
 
-The config holds every per-repo value. Nothing project-specific lives in code.
+Small on purpose: the tracker, the repo, the label names, the risk paths, the
+Slack prefix and the model aliases. The Linear adapter keeps its own keys in
+docs/agents/linear.json (see adapters/linear/).
 """
 
 from __future__ import annotations
@@ -10,70 +12,34 @@ import json
 import os
 from pathlib import Path
 
-DEFAULT_PATH = "docs/agents/linear.json"
+DEFAULT_PATH = "docs/agents/flow.json"
+TRACKERS = ("github", "linear")
+SIZES = ("S", "M", "L")
 
 DEFAULTS = {
-    "states": {
-        "triage": "Triage",
-        "backlog": "Backlog",
-        "todo": "Todo",
-        "in_progress": "In Progress",
-        "in_review": "In Review",
-        "done": "Done",
-        "canceled": "Canceled",
-        "duplicate": "Duplicate",
-    },
+    "tracker": "github",
     "labels": {
-        "needs_info": "needs-info",
-        "ready_for_agent": "ready-for-agent",
-        "ready_for_human": "ready-for-human",
+        "size": {"S": "size:S", "M": "size:M", "L": "size:L"},
         "risk": "risk",
-        "wayfinder_prefix": "wayfinder:",
-        "retired": ["wayfinder:map"],
-        "state_roles": ["needs-triage", "wontfix", "duplicate", "invalid"],
-        "rename": {"bug": "Bug", "enhancement": "Feature"},
-        "size_prefix": "size:",
-        "unmapped": "keep",
-        "workspace": [],
-    },
-    "project_labels": {"wayfinder": "wayfinder", "build": "build"},
-    "projects": {
-        "map_labels": ["wayfinder:map"],
-        "map_title_prefixes": ["Map:"],
-        "spec_title_prefixes": ["Spec:"],
-        "extra": [],
-        "names": {},
-        "summary_sections": ["Problem Statement"],
-    },
-    "estimate_scale": {
-        "linear_type": "tShirt",
-        "sizes": {"S": 2, "M": 3, "L": 5},
+        "integrated": "integrated",
+        # Matt Pocock's five roles. His setup skill creates them; we only check.
+        "triage": ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"],
     },
     "risk_paths": [],
     "risk_keywords": ["auth", "migration", "delete", "public api"],
-    "mapping_file": "docs/agents/linear-mapping.json",
     "orchestration_doc": "docs/agents/orchestration.md",
     "models": {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"},
     "slack_prefix": "",
 }
 
-REQUIRED = [
-    ("workspace_id",),
-    ("workspace_url_key",),
-    ("team", "key"),
-    ("team", "id"),
-    ("keychain_service",),
-    ("github_repo",),
-]
-
-
-def initiative_name(cfg: dict):
-    """The initiative's name, or None when the config sets "initiative": null (initiatives off)."""
-    ini = cfg.get("initiative")
-    return ini["name"] if ini else None
+REQUIRED = [("github_repo",)]
 
 
 class ConfigError(Exception):
+    pass
+
+
+class ConfigMissing(ConfigError):
     pass
 
 
@@ -90,34 +56,26 @@ def _merge(base: dict, over: dict) -> dict:
 def check(cfg: dict) -> list:
     """Return a list of problems. Empty means the config is usable."""
     problems = []
-    for path in REQUIRED:
-        node = cfg
-        for key in path:
-            node = node.get(key) if isinstance(node, dict) else None
-        if node in (None, ""):
-            problems.append("missing " + ".".join(path))
-    if "initiative" not in cfg:
-        problems.append("missing initiative (an object with a name, or null when the workspace has initiatives off)")
-    elif cfg["initiative"] is not None and not cfg["initiative"].get("name"):
-        problems.append("missing initiative.name")
+    if cfg.get("tracker") not in TRACKERS:
+        problems.append(f"tracker must be one of {', '.join(TRACKERS)}")
     repo = cfg.get("github_repo", "")
-    if repo and repo.count("/") != 1:
+    if not repo:
+        problems.append("missing github_repo")
+    elif repo.count("/") != 1:
         problems.append("github_repo must be owner/name")
-    sizes = cfg.get("estimate_scale", {}).get("sizes", {})
-    if set(sizes) != {"S", "M", "L"}:
-        problems.append("estimate_scale.sizes needs exactly S, M and L")
-    elif not sizes["S"] < sizes["M"] < sizes["L"]:
-        problems.append("estimate_scale.sizes must rise S < M < L")
-    if cfg.get("labels", {}).get("unmapped") not in ("keep", "drop"):
-        problems.append("labels.unmapped must be keep or drop")
+    size = cfg.get("labels", {}).get("size", {})
+    if set(size) != set(SIZES) or not all(isinstance(v, str) and v for v in size.values()):
+        problems.append("labels.size needs a name for each of S, M and L")
+    elif len(set(size.values())) != 3:
+        problems.append("labels.size names must differ")
+    for key in ("risk", "integrated"):
+        if not cfg.get("labels", {}).get(key):
+            problems.append(f"missing labels.{key}")
     return problems
 
 
 def from_dict(raw: dict) -> dict:
     cfg = _merge(DEFAULTS, {k: v for k, v in raw.items() if k != "$schema"})
-    env_service = os.environ.get("LINEAR_KEYCHAIN_SERVICE")
-    if env_service:
-        cfg["keychain_service"] = env_service
     problems = check(cfg)
     if problems:
         raise ConfigError("config problems: " + "; ".join(problems))
@@ -127,7 +85,7 @@ def from_dict(raw: dict) -> dict:
 def load(path: str | None = None) -> dict:
     p = Path(path or os.environ.get("FLOW_CONFIG") or DEFAULT_PATH)
     if not p.exists():
-        raise ConfigError(f"no config at {p}. Copy examples/*.json or run /flow:setup.")
+        raise ConfigMissing(f"no config at {p}. Copy examples/flow.json or run /flow:setup.")
     with p.open() as fh:
         raw = json.load(fh)
     cfg = from_dict(raw)
@@ -135,10 +93,30 @@ def load(path: str | None = None) -> dict:
     return cfg
 
 
+def require_github(cfg: dict) -> None:
+    """The core scripts are GitHub-only; a Linear repo uses the adapter's."""
+    if cfg["tracker"] != "github":
+        raise ConfigError(
+            f"tracker is {cfg['tracker']!r}: use the scripts in adapters/linear/scripts "
+            "(see adapters/linear/README.md)"
+        )
+
+
+def size_label(cfg: dict, size: str) -> str:
+    return cfg["labels"]["size"][size]
+
+
+def size_from_labels(cfg: dict, labels) -> str | None:
+    """S, M or L from a ticket's label names, or None. Larger wins if several are set."""
+    names = {str(l).lower() for l in labels}
+    found = [s for s in SIZES if cfg["labels"]["size"][s].lower() in names]
+    return found[-1] if found else None
+
+
+def has_risk_label(cfg: dict, labels) -> bool:
+    return cfg["labels"]["risk"].lower() in {str(l).lower() for l in labels}
+
+
 def owner_name(cfg: dict) -> tuple:
     owner, name = cfg["github_repo"].split("/")
     return owner, name
-
-
-def linear_base_url(cfg: dict) -> str:
-    return f"https://linear.app/{cfg['workspace_url_key']}"

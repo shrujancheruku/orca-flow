@@ -56,20 +56,23 @@ def parse_claude_json(stdout: str) -> str:
     return data.get("result", "")
 
 
-def risk_hints(text: str, cfg: dict) -> list:
-    """Mechanical hints: named risk paths or keywords that appear in the ticket."""
+def path_hints(text: str, cfg: dict) -> list:
+    """Configured risk paths that the text names (a literal prefix, or a path that matches the glob)."""
     hints = []
     low = (text or "").lower()
+    tokens = re.findall(r"[\w./-]+/[\w./-]+", text or "")
     for pattern in cfg.get("risk_paths", []):
         bare = pattern.rstrip("*").rstrip("/")
-        if bare and bare.lower() in low:
+        if (bare and bare.lower() in low) or any(fnmatch.fnmatch(t, pattern) for t in tokens):
             hints.append(f"path {pattern}")
-        else:
-            for token in re.findall(r"[\w./-]+/[\w./-]+", text or ""):
-                if fnmatch.fnmatch(token, pattern):
-                    hints.append(f"path {pattern}")
-                    break
-    for word in cfg.get("risk_keywords", []):
-        if re.search(rf"\b{re.escape(word.lower())}", low):
-            hints.append(f"word {word}")
     return hints
+
+
+def word_hints(text: str, cfg: dict) -> list:
+    low = (text or "").lower()
+    return [f"word {w}" for w in cfg.get("risk_keywords", []) if re.search(rf"\b{re.escape(w.lower())}", low)]
+
+
+def risk_hints(text: str, cfg: dict) -> list:
+    """Mechanical hints: named risk paths or keywords that appear in the ticket."""
+    return path_hints(text, cfg) + word_hints(text, cfg)

@@ -20,10 +20,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib.config import initiative_name  # noqa: E402
-from flowlib import cli, github, mapping, refs  # noqa: E402
-from flowlib import linear as L  # noqa: E402
-from flowlib.workspace import Workspace  # noqa: E402
+from linearlib.config import initiative_name  # noqa: E402
+from linearlib import cli, github, mapping, refs  # noqa: E402
+from linearlib import linear as L  # noqa: E402
+from linearlib.workspace import Workspace  # noqa: E402
 
 PHASES = ("projects", "issues", "comments", "relations", "attachments", "relink")
 

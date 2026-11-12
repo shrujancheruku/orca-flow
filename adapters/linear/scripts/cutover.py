@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, config as config_mod, github, mapping  # noqa: E402
+from linearlib import cli, config as config_mod, github, mapping  # noqa: E402
 
 TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "ISSUE_TEMPLATE" / "config.yml"
 

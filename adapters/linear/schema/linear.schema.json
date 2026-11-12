@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/linear-orca-flow/schema/linear.schema.json",
+  "$id": "https://github.com/shrujancheruku/orca-flow/adapters/linear/schema/linear.schema.json",
   "title": "docs/agents/linear.json",
   "description": "Per-repo settings for the flow plugin. Every project-specific value lives here.",
   "type": "object",

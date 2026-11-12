@@ -2,7 +2,7 @@ import json
 import os
 import unittest
 
-from flowlib import config
+from linearlib import config
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

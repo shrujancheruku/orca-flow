@@ -1,6 +1,6 @@
 import unittest
 
-from flowlib.linear import LinearClient, LinearError
+from linearlib.linear import LinearClient, LinearError
 
 
 class GuardTest(unittest.TestCase):

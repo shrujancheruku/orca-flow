@@ -13,9 +13,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, github, mapping  # noqa: E402
-from flowlib.linear import LinearError  # noqa: E402
-from flowlib.workspace import Workspace  # noqa: E402
+from linearlib import cli, github, mapping  # noqa: E402
+from linearlib.linear import LinearError  # noqa: E402
+from linearlib.workspace import Workspace  # noqa: E402
 
 LABEL_COLORS = {
     "needs-info": "#f2994a",

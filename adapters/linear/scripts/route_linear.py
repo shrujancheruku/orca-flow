@@ -5,11 +5,11 @@ The coordinator runs this before every worker-start and passes the flags it
 prints. The table is the "## Model routing" section of the repo's
 docs/agents/orchestration.md, read fresh each time.
 
-  route.py --role build --ticket ABC-123 --lookup
+  route_linear.py --role build --ticket ABC-123 --lookup
       reads ABC-123's estimate and labels from Linear (read only)
-  route.py --role build --ticket ABC-123 --size S
-  route.py --role merge --ticket ABC-123 --variant conflict
-  route.py --role review --ticket MVP --risk
+  route_linear.py --role build --ticket ABC-123 --size S
+  route_linear.py --role merge --ticket ABC-123 --variant conflict
+  route_linear.py --role review --ticket MVP --risk
 
 Prints JSON: model, effort, the worker-start flags and the task title.
 """
@@ -22,9 +22,11 @@ import shlex
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts"))
 
-from flowlib import cli, mapping, routing  # noqa: E402
-from flowlib import linear as L  # noqa: E402
+from flowlib import routing  # noqa: E402
+from linearlib import cli, mapping  # noqa: E402
+from linearlib import linear as L  # noqa: E402
 
 ISSUE = """query($id: String!) { issue(id: $id) { identifier estimate labels { nodes { name } } } }"""
 
@@ -56,7 +58,7 @@ def main() -> None:
         risk = risk or cfg["labels"]["risk"].lower() in names
     if args.role == "build" and size is None:
         size = "M"
-        warnings.append("no estimate: routed as M; run estimate.py so the next dispatch is sized")
+        warnings.append("no estimate: routed as M; run estimate_linear.py so the next dispatch is sized")
 
     try:
         table = routing.parse_table(open(args.doc or cfg["orchestration_doc"]).read())

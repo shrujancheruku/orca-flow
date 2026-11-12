@@ -193,15 +193,16 @@ finish() {
 
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES: author this section. One stage() per step the human takes.
-# Replace the example below. Set TOTAL_STAGES to match the stages you write.
 # Keep every stage inside run_wizard and the last line as is: bash then parses
 # the whole file before the first prompt, so an edit mid-run can't break it.
 # ──────────────────────────────────────────────────────────────────────────
 
-# Usage: wizard/wizard.sh [path/to/docs/agents/linear.json]
-# Reads per-repo values from the config. Nothing here prints the Linear key.
+# Usage: wizard/wizard.sh [path/to/docs/agents/flow.json]
+# GitHub is the default tracker. A config that says "tracker": "linear" hands
+# over to adapters/linear/wizard.sh.
 
-CONFIG="${1:-${FLOW_CONFIG:-docs/agents/linear.json}}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG="${1:-${FLOW_CONFIG:-docs/agents/flow.json}}"
 
 cfg() {
   python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))
@@ -209,85 +210,42 @@ for k in sys.argv[2].split("."): d=d.get(k, "") if isinstance(d, dict) else ""
 print(d)' "$CONFIG" "$1"
 }
 
-linear_ok() {
-  # Read-only check that the stored key works. The key goes to curl on stdin, never argv or output.
-  local key
-  key=$(security find-generic-password -a "$USER" -s "$SERVICE" -w 2>/dev/null) || return 1
-  printf 'header = "Authorization: %s"\n' "$key" | curl -sf -K - -H 'Content-Type: application/json' \
-    -d '{"query":"{ organization { urlKey } }"}' https://api.linear.app/graphql | grep -q '"urlKey"'
-}
-
 run_wizard() {
 
 [[ -f "$CONFIG" ]] || { warn "no config at $CONFIG; run /flow:setup first or pass the path"; exit 1; }
-SERVICE="${LINEAR_KEYCHAIN_SERVICE:-$(cfg keychain_service)}"
-URL_KEY=$(cfg workspace_url_key)
-TEAM_KEY=$(cfg team.key)
+if [[ "$(cfg tracker)" == "linear" ]]; then
+  say "This repo's tracker is Linear. Handing over to the Linear adapter's wizard."
+  exec "$HERE/../adapters/linear/wizard.sh"
+fi
 REPO=$(cfg github_repo)
 PREFIX=$(cfg slack_prefix)
-[[ -n "$PREFIX" ]] || PREFIX=$(printf '%s' "$TEAM_KEY" | tr '[:upper:]' '[:lower:]')
+[[ -n "$PREFIX" ]] || PREFIX=$(printf '%s' "${REPO#*/}" | tr '[:upper:]' '[:lower:]')
 
-TOTAL_STAGES=7
+TOTAL_STAGES=3
 
-banner "Linear and Orca setup for $REPO"
+banner "GitHub and Orca setup for $REPO"
 
-stage "Linear: API key into the Keychain"
-STORE=yes
-if linear_ok; then
-  say "A working Linear key is already in the Keychain under $SERVICE."
-  confirm "Replace it anyway?" || STORE=no
-fi
-if [[ "$STORE" == yes ]]; then
-  open_url "https://linear.app/$URL_KEY/settings/account/security"
-  step "Under Personal API keys, create a key named flow-$TEAM_KEY with full access."
-  step "Copy it. The next prompt is from macOS: paste it twice. Nothing is echoed."
-  pause "Press Enter when the key is on your clipboard"
-  security add-generic-password -U -a "$USER" -s "$SERVICE" -w
-  if linear_ok; then printf '  %s✓ stored%s Linear key in Keychain service %s\n' "$GREEN" "$RESET" "$SERVICE"
-  else warn "Linear rejected the key"; SKIPPED+=("Linear API key in Keychain $SERVICE"); fi
-fi
-pause
-
-stage "Orca: connect Linear"
-say "Orca needs its own Linear connection for orca linear and for ticket-linked worktrees."
-step "In Orca, open Settings, then Integrations, then Linear. (Names may differ in your Orca version.)"
-step "Connect the $URL_KEY workspace. Disconnect any workspace you no longer use, so tickets do not land there."
-pause "Press Enter when it is connected"
-if command -v orca >/dev/null 2>&1 && orca linear team list --workspace all --json 2>/dev/null | grep -q "\"$TEAM_KEY\""; then
-  printf '  %s✓ Orca sees team %s%s\n' "$GREEN" "$TEAM_KEY" "$RESET"
+stage "Orca: import the repo"
+say "Orca links worktrees to GitHub issues (orca worktree create --issue) once it has the repo."
+step "In Orca, add $REPO as a project (Add project, then pick the local clone)."
+step "Open Settings, then GitHub, and sign in if Orca asks. (Names may differ in your Orca version.)"
+pause "Press Enter when the repo is in Orca"
+if command -v orca >/dev/null 2>&1 && orca repo list --json 2>/dev/null | grep -qi "${REPO#*/}"; then
+  printf '  %s✓ Orca lists %s%s\n' "$GREEN" "${REPO#*/}" "$RESET"
 else
-  warn "Orca does not list team $TEAM_KEY yet"; SKIPPED+=("Connect Linear in Orca")
+  warn "Could not confirm that Orca lists ${REPO#*/}"; SKIPPED+=("Import $REPO into Orca")
 fi
 pause
-
-stage "Linear: turn on Triage"
-open_url "https://linear.app/$URL_KEY/settings/teams/$TEAM_KEY/triage"
-step "Turn Triage on for team $TEAM_KEY."
-step "Leave Triage responsibility off for now."
-pause "Press Enter when Triage is on"
-
-stage "Linear: GitHub integration"
-open_url "https://linear.app/$URL_KEY/settings/integrations/github"
-step "Connect GitHub and give it access to $REPO."
-step "Under the team's pull request automations, set: draft PR opened → In Progress; PR merged → Done."
-step "Leave PR review → In Review off. Our In Review means merged into the integration branch, and the coordinator sets it."
-note "A PR whose body says 'Fixes $TEAM_KEY-12' closes that ticket when it merges."
-pause "Press Enter when it is set"
-
-stage "Slack: Linear app"
-say "Agents write to Linear only. Slack hears it through the Linear app."
-step "In Slack, create #$PREFIX-work and #$PREFIX-needs-you."
-open_url "https://linear.app/$URL_KEY/settings/integrations/slack"
-step "Connect Slack. For team $TEAM_KEY, post new and updated issues to #$PREFIX-work."
-step "In your own notification settings, send Slack notifications for mentions and assignments; or route the needs-info label to #$PREFIX-needs-you with a team notification."
-pause "Press Enter when it is set"
 
 stage "Slack: GitHub app"
-step "In Slack, create #$PREFIX-prs."
+say "Agents write to GitHub only. Slack hears it through the GitHub app."
+step "In Slack, create #$PREFIX-prs and #$PREFIX-needs-you."
 open_url "https://slack.github.com/"
 step "Install the GitHub app in your Slack workspace."
-step "In #$PREFIX-prs, run: /github subscribe $REPO pulls reviews comments"
-step "Then run: /github unsubscribe $REPO issues commits releases deployments"
+step "In #$PREFIX-prs, run: /github subscribe $REPO issues pulls comments"
+step "In #$PREFIX-needs-you, run: /github subscribe $REPO issues +label:\"ready-for-human\""
+step "Then, still in #$PREFIX-needs-you: /github subscribe $REPO issues +label:\"needs-info\""
+note "Check with /github subscribe list. Slack may AND label filters or let the second replace the first; if so, make #$PREFIX-needs-info for the second label."
 pause "Press Enter when it is set"
 
 stage "Claude Code: update Matt Pocock's skills"

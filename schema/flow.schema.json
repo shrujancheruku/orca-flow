@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "orca-flow config (docs/agents/flow.json)",
+  "type": "object",
+  "required": ["github_repo"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "tracker": {
+      "enum": ["github", "linear"],
+      "default": "github",
+      "description": "github is the default. linear points to adapters/linear, whose own keys live in docs/agents/linear.json."
+    },
+    "github_repo": { "type": "string", "pattern": "^[^/]+/[^/]+$", "description": "owner/name" },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "size": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "S": { "type": "string", "default": "size:S" },
+            "M": { "type": "string", "default": "size:M" },
+            "L": { "type": "string", "default": "size:L" }
+          }
+        },
+        "risk": { "type": "string", "default": "risk" },
+        "integrated": { "type": "string", "default": "integrated" },
+        "triage": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Matt Pocock's five roles as this repo names them. setup_labels.py checks them and creates none."
+        }
+      }
+    },
+    "risk_paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Globs. A ticket that touches one routes to the risk row."
+    },
+    "risk_keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Words the estimator reports as risk hints. They never change routing by themselves."
+    },
+    "orchestration_doc": { "type": "string", "default": "docs/agents/orchestration.md" },
+    "models": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Aliases passed to --model. Keys are haiku, sonnet and opus."
+    },
+    "slack_prefix": { "type": "string", "description": "Channels are #<prefix>-prs and #<prefix>-needs-you." }
+  }
+}

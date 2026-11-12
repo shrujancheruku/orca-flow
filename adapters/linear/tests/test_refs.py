@@ -1,6 +1,6 @@
 import unittest
 
-from flowlib import refs
+from linearlib import refs
 
 REPO = "acme/app"
 TABLE = {

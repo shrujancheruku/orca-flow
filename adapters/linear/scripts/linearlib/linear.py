@@ -35,7 +35,7 @@ def read_key(service: str) -> str:
     except FileNotFoundError as exc:
         raise LinearError("the `security` tool is missing; this needs macOS Keychain") from exc
     if out.returncode != 0 or not out.stdout.strip():
-        raise LinearError(f"no Linear key in the Keychain under service {service!r}. Run wizard/wizard.sh.")
+        raise LinearError(f"no Linear key in the Keychain under service {service!r}. Run adapters/linear/wizard.sh.")
     return out.stdout.strip()
 
 

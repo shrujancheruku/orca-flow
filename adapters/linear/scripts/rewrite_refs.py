@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, github, mapping, refs  # noqa: E402
+from linearlib import cli, github, mapping, refs  # noqa: E402
 
 SKIP_DIRS = {".git", "node_modules", ".venv", "dist", "build", ".expo", ".next"}
 
