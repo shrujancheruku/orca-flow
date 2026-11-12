@@ -1,66 +1,97 @@
 # flow
 
-A Claude Code plugin. It runs [Matt Pocock's skills](https://github.com/mattpocock/skills) with Linear as the issue tracker and Orca as the executor. It also moves a repo's GitHub issues to Linear.
+[Matt Pocock's skills](https://github.com/mattpocock/skills) on Orca. A Claude Code plugin.
 
-Matt's skills are used as published. This plugin never edits them. It changes their behaviour only through the docs it seeds into your repo (`docs/agents/*.md`) and the `## Agent skills` block in `CLAUDE.md`.
+Matt's skills are used as published. This plugin never edits them. It changes their behaviour only through the docs it seeds into your repo (`docs/agents/*.md`, between its own `<!-- flow:begin ... -->` markers) and the `## Agent skills` block in `CLAUDE.md`.
+
+GitHub Issues is the tracker. Linear is an optional adapter ([`adapters/linear/`](adapters/linear/README.md)), for a team that wants Linear or a repo moving from GitHub to Linear.
+
+## Layers
+
+| Layer | What | Where |
+| --- | --- | --- |
+| Procedure | Matt's `/implement-spec`: a task graph, a frontier, one integration branch | Matt's plugin, unmodified |
+| Policy | `/flow:build`: how each role is run, routed, checked and merged | `skills/build`, `docs/agents/orchestration.md` |
+| Executor | Orca: each role is a worker in its own worktree | `orca` |
+| Measurement | The profiler: cost by model, role and ticket | `scripts/profile.py` |
 
 ## What you get
 
-- `/flow:setup` sets up a repo: config, Linear team, migration, verify, reference rewrite, seeded docs, estimates and cutover.
-- `/flow:build` builds a spec. It follows Matt's `/implement-spec`, runs each role as an Orca worker, and picks each worker's model from a routing table you own.
-- `wizard/wizard.sh` walks you through the steps only you can do: the Linear API key, Orca's Linear connection, Triage, the GitHub integration and Slack.
+- `/flow:setup` sets up a repo: config, labels, seeded docs and size proposals.
+- `/flow:build` builds a spec. It follows `/implement-spec`, runs each role as an Orca worker, and picks each worker's model from a routing table you own.
+- `wizard/wizard.sh` walks you through the steps only you can do: importing the repo into Orca, the GitHub Slack app, and updating Matt's plugin.
 
-## How work maps to Linear
+## Model routing
 
-| Matt's skills | Linear |
+The table lives in your repo's `docs/agents/orchestration.md`; `route.py` reads it on every dispatch. Size comes from the `size:S|M|L` label. The `risk` label, or a ticket that touches a path in `risk_paths`, raises the model.
+
+| Role | Model | Effort |
+| --- | --- | --- |
+| Implementer, S | Haiku | |
+| Implementer, M | Sonnet | medium |
+| Implementer, L | Sonnet | high |
+| Implementer, L + risk | Opus | |
+| Scout | Haiku | low |
+| Merger | Haiku | low (Sonnet on a real conflict) |
+| Per-ticket check | Haiku | low |
+| Integration review | Sonnet | high (Opus with risk tickets) |
+| Fixer | Sonnet | medium |
+| Coordinator | Opus | medium |
+
+One escalation: a Haiku implementer that fails twice is replaced by Sonnet on the same branch. S + risk and M + risk have rows too; see the seeded table.
+
+## How work maps to GitHub
+
+| Matt's skills / flow | GitHub |
 | --- | --- |
-| A phase of work | An initiative (optional: set `"initiative": null` when the workspace has initiatives off) |
-| A wayfinder map | A project labelled `wayfinder`. The Destination is the summary; the rest is the content. |
-| A spec | A project labelled `build` |
-| A ticket | An issue in that project |
-| Blocked by | A blocking relation |
-| needs-triage | The Triage state |
-| needs-info | Triage + the `needs-info` label |
-| ready-for-agent / ready-for-human | Todo + the label |
-| wontfix | Canceled |
+| A spec | An issue |
+| A ticket | An issue, linked to the spec |
+| Blocked by | Native issue dependencies (or a `Blocked by:` line) |
+| The five triage roles | Labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` (Matt's setup skill makes them) |
+| A build milestone | A GitHub **Milestone** |
+| The milestone's build | One integration branch and one draft PR into main |
+| A ticket merged into the integration branch | The `integrated` label. The issue stays open; the frontier counts it as done. |
+| Closing tickets | `Closes #N` lines in the integration PR body: the founder merges it, GitHub closes them |
+| Size and risk | Labels `size:S`, `size:M`, `size:L`, `risk` |
+| A worker | An Orca worktree created with `--issue <n>`, task title `#123 · build · haiku` |
+| The end-of-milestone cost summary | A comment on the integration PR |
 
-One team per app. In Review means merged into the milestone's integration branch, and the frontier counts it as done.
+The founder merges integration PRs. Automerge is opt-in per run.
 
 ## Needs
 
-- macOS (the Linear key lives in the Keychain), Python 3.9+, `gh`, `orca` and `claude`.
-- Matt Pocock's skills plugin.
-- A Linear workspace with a team for the app.
+- Python 3.9+ (standard library only), `gh`, `orca` and `claude`.
+- Matt Pocock's skills plugin, set up in the repo with `/setup-matt-pocock-skills`.
 
-## Install
+## Quick start
 
 ```
 /plugin marketplace add <path or git url of this repo>
-/plugin install flow@linear-orca-flow
+/plugin install flow@orca-flow
 ```
 
-Then, in the repo you want to set up, run `/flow:setup`.
+In the repo you want to set up:
+
+1. `/setup-matt-pocock-skills` (pick GitHub, keep the default triage labels), if you have not.
+2. `/flow:setup`. It writes `docs/agents/flow.json`, creates the missing labels, seeds the docs and proposes sizes.
+3. `wizard/wizard.sh` in your own terminal, for Orca and Slack.
+4. `/flow:build` on a spec's milestone.
 
 ## Config
 
-Every per-repo value is in `docs/agents/linear.json`. The schema is `schema/linear.schema.json`; `examples/` has a filled one. Scripts look for the config at `--config`, then `$FLOW_CONFIG`, then `docs/agents/linear.json`. `LINEAR_KEYCHAIN_SERVICE` overrides the Keychain service.
+Every per-repo value is in `docs/agents/flow.json`: `tracker`, `github_repo`, the label names, `risk_paths`, `slack_prefix` and the model aliases. The schema is `schema/flow.schema.json`; `examples/flow.json` is a filled one. Scripts look for the config at `--config`, then `$FLOW_CONFIG`, then `docs/agents/flow.json`. `--repo owner/name` stands in for a missing config.
 
 ## Scripts
 
-All in `scripts/`. Each is a dry run until you pass `--apply`, and each is safe to rerun: it skips what already exists.
+All in `scripts/`. Each that writes is a dry run until you pass `--apply`, and each is safe to rerun.
 
 | Script | Does |
 | --- | --- |
-| `setup_team.py` | Adds the In Review state, the estimate scale, labels, project labels and the initiative. |
-| `migrate.py` | Moves GitHub issues, comments, sub-issues and blockers to Linear. Records every id in `docs/agents/linear-mapping.json`, so a failed run resumes. |
-| `verify.py` | Read only. Checks every migrated issue and project against GitHub. |
-| `rewrite_refs.py` | Rewrites `#N` issue refs in your markdown to Linear links. PR numbers stay. |
-| `seed_docs.py` | Writes the agent docs and the `CLAUDE.md` block. |
-| `estimate.py` | `propose` asks Haiku for sizes and writes a file for you to approve. `apply` writes only the approved ones. |
-| `cutover.py` | Comments "Moved to" on each GitHub issue, closes it, and points new issues at Linear. |
-| `project_doc.py` | Reads and edits a project's summary and content, for wayfinder and to-spec. |
-| `route.py` | Picks a worker's model and effort from the routing table. |
-| `profile.py` | Costs an Orca run by model, role and ticket. Writes JSON and an HTML view. |
+| `setup_labels.py` | Creates `size:S`, `size:M`, `size:L`, `risk` and `integrated` with `gh label create`. Checks Matt's five triage labels exist and reports any that do not; it creates none of them. |
+| `seed_docs.py` | Adds an "Orca and milestones" section to `issue-tracker.md`, a "Flow labels" section to `triage-labels.md`, writes `orchestration.md` if absent, and adds the Orchestration block to `CLAUDE.md`. Only the text between its markers is rewritten. |
+| `estimate.py` | `propose` copies existing `size:` labels, asks Haiku (`claude -p --model haiku --output-format json`) to double-check them and to size the rest, and writes a file for you to approve. `apply --apply` edits only the approved ones, with `gh issue edit --add-label`. |
+| `route.py` | Picks a worker's model and effort from the routing table, and prints its task title. |
+| `profile.py` | Costs an Orca run by model, role and ticket. Writes JSON and an HTML view. `--pr <n> --apply` comments the summary on the integration PR. |
 
 ## Tests
 
@@ -70,7 +101,7 @@ python3 -m unittest
 
 ## Status
 
-0.1.0. The migration has been dry-run against a real repo. Profiling and the Orca worker fields have not yet been checked against a real run. See `CHANGELOG.md`.
+0.2.0. GitHub is the default tracker; Linear moved to an adapter (see `CHANGELOG.md` for the breaking changes). The GitHub path has been dry-run against a real repo. Profiling and the Orca worker fields have not yet been checked against a real run.
 
 ## License
 
