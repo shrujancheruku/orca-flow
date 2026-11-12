@@ -54,7 +54,7 @@ def propose(args, cfg) -> None:
             continue
         prompt = estimating.build_prompt(issue, cfg)
         try:
-            answer = estimating.parse_answer(agents.ask(agents.profile(args.model, cfg["models"]), prompt, args.timeout))
+            answer = estimating.parse_answer(agents.ask(agents.profile(args.model, cfg["models"]), prompt, args.timeout), cfg)
         except (agents.AgentError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             print(f"  {issue['identifier']}: no answer ({exc})")
             continue

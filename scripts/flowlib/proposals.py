@@ -14,6 +14,9 @@ def make_proposal(issue: dict, cfg: dict, answer: dict | None, hints: list) -> d
     An existing `size:` label is copied as the proposal and Haiku double-checks
     it; a disagreement is recorded, never acted on. With no label, Haiku's size
     is the proposal.
+
+    Risk comes from the `risk` label, a configured risk path the ticket names, or
+    a risk kind Haiku named. Keyword hints are shown, never counted.
     """
     existing = config.size_from_labels(cfg, issue["labels"])
     haiku = answer["size"] if answer else None
@@ -32,11 +35,31 @@ def make_proposal(issue: dict, cfg: dict, answer: dict | None, hints: list) -> d
         "existing_size": existing,
         "haiku_size": haiku,
         "agrees": (haiku == existing) if (existing and haiku) else None,
-        "risk": config.has_risk_label(cfg, issue["labels"]) or bool(answer and answer["risk"]),
+        "risk": (config.has_risk_label(cfg, issue["labels"]) or bool(answer and answer["risk"])
+                 or any(h.startswith("path ") for h in hints)),
+        "risk_kind": answer.get("risk_kind") if answer else None,
         "risk_hints": hints,
         "reason": reason,
         "approved": False,
     }
+
+
+def calibrate(items: list, calibrated: dict) -> list:
+    """Apply the calibration pass to Haiku-sized proposals. A copied label is never changed.
+
+    `first_size` keeps what Haiku said about the ticket alone.
+    """
+    changed = []
+    for item in items:
+        new = calibrated.get(item["number"])
+        if item["source"] != "haiku" or not new:
+            continue
+        item.setdefault("first_size", item["haiku_size"])
+        if new["size"] != item["size"]:
+            changed.append(item["number"])
+            item["reason"] = f"alone {item['first_size']}, against the set {new['size']}: {new['reason']}"
+        item["size"] = new["size"]
+    return changed
 
 
 def label_edits(proposal: dict, cfg: dict, current_labels: list) -> dict:

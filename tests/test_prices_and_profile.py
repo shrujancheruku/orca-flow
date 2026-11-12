@@ -76,11 +76,28 @@ class EstimatingTest(unittest.TestCase):
     def test_prompt_and_answer(self):
         prompt = estimating.build_prompt({"identifier": "#1", "title": "Add a field", "description": "Small."}, cfg())
         self.assertIn("#1: Add a field", prompt)
-        self.assertIn("packages/records/**", prompt)
-        self.assertEqual(estimating.parse_answer('Sure: {"size": "s", "risk": false, "reason": "tiny"}'),
-                         {"size": "S", "risk": False, "reason": "tiny"})
+        self.assertIn("deleting a person's data", prompt)
+        self.assertEqual(estimating.parse_answer('Sure: {"size": "s", "risk_kind": null, "reason": "tiny"}', cfg()),
+                         {"size": "S", "risk": False, "risk_kind": None, "reason": "tiny"})
         with self.assertRaises(ValueError):
-            estimating.parse_answer('{"size": "XXL"}')
+            estimating.parse_answer('{"size": "XXL"}', cfg())
+
+    def test_risk_is_only_a_configured_kind(self):
+        kind = "deleting a person's data"
+        a = estimating.parse_answer('{"size": "M", "risk_kind": "Deleting a person\'s data", "reason": "r"}', cfg())
+        self.assertEqual((a["risk"], a["risk_kind"]), (True, kind))
+        a = estimating.parse_answer('{"size": "M", "risk_kind": "a public API", "reason": "r"}', cfg())
+        self.assertEqual((a["risk"], a["risk_kind"]), (False, None))
+
+    def test_calibration_round_trip(self):
+        prompt = estimating.build_calibration_prompt(
+            [{"number": 3, "title": "Scaffold", "size": "L", "reason": "big"},
+             {"number": 4, "title": "Logger", "size": "L", "reason": "one module"}])
+        self.assertIn("#4 [L] Logger: one module", prompt)
+        out = estimating.parse_calibration(
+            '{"sizes": {"3": {"size": "L", "reason": "a"}, "#4": {"size": "s", "reason": "b"},'
+            ' "9": {"size": "M"}, "x": {}, "5": {"size": "XL"}}}', {3, 4, 5})
+        self.assertEqual(out, {3: {"size": "L", "reason": "a"}, 4: {"size": "S", "reason": "b"}})
 
     def test_claude_json(self):
         self.assertEqual(agents.parse_claude_json('{"result": "hi", "is_error": false}'), "hi")

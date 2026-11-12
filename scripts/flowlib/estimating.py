@@ -6,21 +6,45 @@ import fnmatch
 import json
 import re
 
+from . import config
+
+RUBRIC = """Sizes are how much work one coding agent does, not how long the ticket is:
+- S: one sitting. One module, about 300 changed lines or fewer with tests, and it
+  follows a pattern that already exists or that the ticket spells out.
+- M: one module or a few files, new tests, and some choices the ticket mostly settles.
+  About 300 to 1000 changed lines.
+- L: several sittings. New seams across packages, or design questions the ticket
+  leaves open. An L usually ought to be split.
+Detailed acceptance criteria are not size: a long ticket whose decisions are already
+made can still be S or M."""
+
 PROMPT = """You size one ticket for a coding agent. Answer with JSON only.
 
-Sizes:
-- S: one small change in one or two files, clear acceptance criteria, no design choices.
-- M: a few files or one module, some judgement, tests to write.
-- L: several modules, new seams or schemas, or open design questions.
+{rubric}
 
-Risk means the ticket touches auth, data migrations, data deletion, a public API,
-or one of these paths: {risk_paths}.
+Risk is narrow. It is one of these kinds, or none: {risk_kinds}.
+Touching an API, or having many acceptance criteria, is not risk by itself.
+If none of the kinds applies, risk_kind is null.
 
 Ticket {identifier}: {title}
 
 {description}
 
-Answer exactly: {{"size": "S|M|L", "risk": true|false, "reason": "one sentence"}}
+Answer exactly: {{"size": "S|M|L", "risk_kind": "<one of the kinds>"|null, "reason": "one sentence"}}
+"""
+
+CALIBRATE = """These tickets come from one spec. Each was sized alone. Make the sizes consistent
+across the set, using the same scale. Answer with JSON only.
+
+{rubric}
+
+Compare tickets with each other. A ticket that is clearly smaller than another one sized
+L is not L too. Change a size only when the comparison calls for it.
+
+{lines}
+
+Answer exactly: {{"sizes": {{"<number>": {{"size": "S|M|L", "reason": "one sentence"}}}}}}
+with one entry per ticket above.
 """
 
 
@@ -29,24 +53,62 @@ def build_prompt(issue: dict, cfg: dict, limit: int = 12000) -> str:
     if len(description) > limit:
         description = description[:limit] + "\n[truncated]"
     return PROMPT.format(
-        risk_paths=", ".join(cfg.get("risk_paths") or ["(none named)"]),
+        rubric=RUBRIC,
+        risk_kinds="; ".join(_kinds(cfg)),
         identifier=issue["identifier"],
         title=issue["title"],
         description=description or "(no description)",
     )
 
 
-def parse_answer(text: str) -> dict:
-    """Pull the JSON answer out of the model's reply."""
+def _kinds(cfg: dict) -> list:
+    return cfg.get("risk_kinds") or config.DEFAULTS["risk_kinds"]
+
+
+def _json(text: str) -> dict:
     m = re.search(r"\{.*\}", text or "", re.DOTALL)
     if not m:
         raise ValueError("no JSON in the answer")
-    data = json.loads(m.group(0))
-    size = str(data.get("size", "")).upper()
-    if size not in ("S", "M", "L"):
-        raise ValueError(f"bad size {data.get('size')!r}")
-    return {"size": size, "risk": bool(data.get("risk")), "reason": str(data.get("reason", ""))[:300]}
+    return json.loads(m.group(0))
 
+
+def _size(value) -> str:
+    size = str(value or "").upper()
+    if size not in ("S", "M", "L"):
+        raise ValueError(f"bad size {value!r}")
+    return size
+
+
+def parse_answer(text: str, cfg: dict) -> dict:
+    """Pull the JSON answer out of the model's reply. Risk holds only for a configured kind."""
+    data = _json(text)
+    kinds = {k.lower(): k for k in _kinds(cfg)}
+    kind = kinds.get(str(data.get("risk_kind") or "").strip().lower())
+    return {"size": _size(data.get("size")), "risk": kind is not None, "risk_kind": kind,
+            "reason": str(data.get("reason", ""))[:300]}
+
+
+def build_calibration_prompt(items: list) -> str:
+    """items: [{"number", "title", "size", "reason"}], each sized alone."""
+    lines = "\n".join(f"#{i['number']} [{i['size']}] {i['title']}: {i['reason']}" for i in items)
+    return CALIBRATE.format(rubric=RUBRIC, lines=lines)
+
+
+def parse_calibration(text: str, numbers) -> dict:
+    """{number: {"size", "reason"}} for the asked-about numbers; anything else is dropped."""
+    sizes = _json(text).get("sizes") or {}
+    out = {}
+    for key, val in sizes.items():
+        try:
+            n = int(str(key).lstrip("#"))
+        except ValueError:
+            continue
+        if n in numbers and isinstance(val, dict):
+            try:
+                out[n] = {"size": _size(val.get("size")), "reason": str(val.get("reason", ""))[:300]}
+            except ValueError:
+                continue
+    return out
 
 
 def path_hints(text: str, cfg: dict) -> list:

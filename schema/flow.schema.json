@@ -44,6 +44,11 @@
       "items": { "type": "string" },
       "description": "Words the estimator reports as risk hints. They never change routing by themselves."
     },
+    "risk_kinds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The only things the estimator may call risk. A risk path also proposes risk; keywords never do."
+    },
     "orchestration_doc": { "type": "string", "default": "docs/agents/orchestration.md" },
     "models": {
       "type": "object",

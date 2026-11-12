@@ -25,6 +25,21 @@ class ProposalTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             proposals.make_proposal(self.issue([]), cfg(), None, [])
 
+    def test_word_hints_are_not_risk_but_paths_are(self):
+        ans = {"size": "M", "risk": False, "risk_kind": None, "reason": "x"}
+        self.assertFalse(proposals.make_proposal(self.issue([]), cfg(), ans, ["word delete"])["risk"])
+        self.assertTrue(proposals.make_proposal(self.issue([]), cfg(), ans, ["path infra/**"])["risk"])
+
+    def test_calibration_changes_only_haiku_sizes(self):
+        mk = lambda labs, size: proposals.make_proposal(
+            dict(self.issue(labs), number=len(labs) + 1), cfg(), {"size": size, "risk": False, "reason": "x"}, [])
+        alone, labelled = mk([], "L"), mk(["size:L"], "L")
+        changed = proposals.calibrate([alone, labelled], {1: {"size": "S", "reason": "small"}, 2: {"size": "S", "reason": "s"}})
+        self.assertEqual(changed, [1])
+        self.assertEqual((alone["size"], alone["first_size"]), ("S", "L"))
+        self.assertIn("alone L, against the set S", alone["reason"])
+        self.assertEqual(labelled["size"], "L")
+
     def test_label_edits_swap_the_size_and_add_risk_once(self):
         p = {"size": "L", "risk": True}
         e = proposals.label_edits(p, cfg(), ["size:S", "bug"])

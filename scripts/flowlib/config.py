@@ -29,6 +29,15 @@ DEFAULTS = {
     },
     "risk_paths": [],
     "risk_keywords": ["auth", "migration", "delete", "public api"],
+    # What the estimator may call risk. A ticket is proposed as risk only for one
+    # of these, or for a configured risk path; keywords are hints, never risk.
+    "risk_kinds": [
+        "auth, sign-in or session tokens",
+        "a stored data format or a data migration",
+        "deleting a person's data",
+        "money: billing, spend limits or quotas",
+        "secrets or credentials",
+    ],
     "orchestration_doc": "docs/agents/orchestration.md",
     "models": {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"},
     "slack_prefix": "",

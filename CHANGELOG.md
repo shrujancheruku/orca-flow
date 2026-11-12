@@ -2,6 +2,14 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## 0.4.0 - 2026-11-12
+
+### Features
+
+- The estimator calibrates its sizes. After sizing each ticket alone, one more call sizes all the Haiku-sized tickets against each other, and the proposal keeps `first_size`. A size copied from a label is never changed. Use `--no-calibrate` to skip this step.
+- Sizes are measured in coding-agent work (one sitting, about 300 lines, an existing pattern for S), not in ticket length. On look-together's first run, the old scale sized 57 of 66 tickets L.
+- Risk is narrower. Haiku has to name one of `risk_kinds` (new in `flow.json`, with defaults for auth, stored formats and migrations, deleting a person's data, money, and secrets), or a configured risk path has to match. Keyword hints are still reported but no longer make a ticket risk, and touching an API is not risk by itself.
+
 ## 0.3.0 - 2026-11-12
 
 ### Features

@@ -4,7 +4,8 @@
   estimate.py propose  reads the open issues, copies any existing `size:` label
                        as the proposal, and asks the `--model` profile (Haiku by default, headless
                        on your Claude subscription) to double-check it or, where there is no
-                       label, to size the issue. It writes a proposals file and
+                       label, to size the issue. A last call sizes the
+                       Haiku-sized issues against each other. It writes a proposals file and
                        changes nothing on GitHub.
   estimate.py apply    reads the proposals file and, with --apply, edits only the
                        issues marked "approved": true, through
@@ -59,7 +60,7 @@ def propose(args, cfg) -> None:
         prompt = estimating.build_prompt({"identifier": ident, "title": issue["title"], "description": issue["body"]}, cfg)
         answer = None
         try:
-            answer = estimating.parse_answer(agents.ask(prof, prompt, args.timeout))
+            answer = estimating.parse_answer(agents.ask(prof, prompt, args.timeout), cfg)
         except (agents.AgentError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             print(f"  {ident}: no answer ({exc})")
         hints = estimating.risk_hints(f"{issue['title']}\n{issue['body'] or ''}", cfg)
@@ -71,6 +72,22 @@ def propose(args, cfg) -> None:
         flag = "" if item["agrees"] is None else ("  agrees" if item["agrees"] else "  DISAGREES")
         print(f"  {ident}: {item['size']} ({item['source']}){' risk' if item['risk'] else ''}{flag}  {item['reason']}")
         save(args.out, cfg, items)
+    sized = [p for p in items if p["source"] == "haiku"]
+    if args.calibrate and len(sized) > 1:
+        print(f"\nCalibrating {len(sized)} size(s) against each other.")
+        first = [dict(p, size=p.get("first_size", p["size"])) for p in sized]
+        try:
+            text = agents.ask(prof, estimating.build_calibration_prompt(first), args.timeout * 2)
+            changed = proposals.calibrate(items, estimating.parse_calibration(text, {p["number"] for p in sized}))
+        except (agents.AgentError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+            print(f"  calibration failed ({exc}); sizes stay as each ticket was sized alone")
+        else:
+            for p in items:
+                if p["number"] in changed:
+                    print(f"  #{p['number']}: {p['first_size']} -> {p['size']}  {p['reason']}")
+            save(args.out, cfg, items)
+    counts = {s: sum(1 for p in items if p["size"] == s) for s in ("S", "M", "L")}
+    print(f"\nSizes: S {counts['S']}, M {counts['M']}, L {counts['L']}; risk {sum(1 for p in items if p['risk'])}.")
     print(f"\nWrote {args.out}. Set \"approved\": true on the entries you accept (change \"size\" first to override), "
           "then run `estimate.py apply --apply`.")
 
@@ -110,6 +127,8 @@ def main() -> None:
     p.add_argument("--unsized-only", action="store_true", help="skip issues that already have a size: label (no double-check)")
     p.add_argument("--limit", type=int, help="ask about at most this many issues")
     p.add_argument("--only", nargs="*", help="only these issues, e.g. 12 13")
+    p.add_argument("--no-calibrate", dest="calibrate", action="store_false",
+                   help="skip the pass that sizes the tickets against each other")
     p.add_argument("--timeout", type=int, default=180, help="seconds per model call")
     args = p.parse_args()
     cfg = cli.load(args)
