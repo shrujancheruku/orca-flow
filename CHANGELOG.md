@@ -2,6 +2,14 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## 0.3.0 - 2026-11-12
+
+### Features
+
+- Model names in the routing table are now profiles. Each entry in `models` is either a Claude model id, as before, or `{ "agent": "<orca agent id>", "model": "<that agent's model id>" }`. `route.py` passes `--agent` along with `--model` and `--effort`, so a row can run on Codex, OpenCode (for example through OpenRouter) or another Orca agent. Nothing changes for existing configs: a bare string still means Claude.
+- `flowlib/agents.py` is now the only place that knows an agent CLI. It holds the estimator's headless runner and the profiler's transcript location, and only Claude has them so far. Adding another agent means adding an entry to `RUNNERS` and `TRANSCRIPTS` there.
+- `orchestration.md` no longer hardcodes `--agent claude`. A brief's subagents (the scout and `code-review`'s reviewers) become their own Orca workers on an agent that has no subagents.
+
 ## 0.2.1 - 2026-11-12
 
 ### Fixes

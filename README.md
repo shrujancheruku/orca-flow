@@ -89,7 +89,7 @@ All in `scripts/`. Each that writes is a dry run until you pass `--apply`, and e
 | --- | --- |
 | `setup_labels.py` | Creates `size:S`, `size:M`, `size:L`, `risk` and `integrated` with `gh label create`. Checks Matt's five triage labels exist and reports any that do not; it creates none of them. |
 | `seed_docs.py` | Adds an "Orca and milestones" section to `issue-tracker.md`, a "Flow labels" section to `triage-labels.md`, writes `orchestration.md` if absent, and adds the Orchestration block to `CLAUDE.md`. Only the text between its markers is rewritten. |
-| `estimate.py` | `propose` copies existing `size:` labels, asks Haiku (`claude -p --model haiku --output-format json`) to double-check them and to size the rest, and writes a file for you to approve. `apply --apply` edits only the approved ones, with `gh issue edit --add-label`. |
+| `estimate.py` | `propose` copies existing `size:` labels, asks Haiku (through `flowlib/agents.py`: `claude -p --model haiku --output-format json`) to double-check them and to size the rest, and writes a file for you to approve. `apply --apply` edits only the approved ones, with `gh issue edit --add-label`. |
 | `route.py` | Picks a worker's model and effort from the routing table, and prints its task title. |
 | `profile.py` | Costs an Orca run by model, role and ticket. Writes JSON and an HTML view. `--pr <n> --apply` comments the summary on the integration PR. |
 

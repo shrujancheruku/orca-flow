@@ -2,8 +2,8 @@
 """Propose `size:` labels (and the `risk` label) for the founder to approve.
 
   estimate.py propose  reads the open issues, copies any existing `size:` label
-                       as the proposal, and asks Haiku (headless, on your Claude
-                       subscription) to double-check it or, where there is no
+                       as the proposal, and asks the `--model` profile (Haiku by default, headless
+                       on your Claude subscription) to double-check it or, where there is no
                        label, to size the issue. It writes a proposals file and
                        changes nothing on GitHub.
   estimate.py apply    reads the proposals file and, with --apply, edits only the
@@ -23,18 +23,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, config, estimating, proposals  # noqa: E402
+from flowlib import agents, cli, config, estimating, proposals  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
-
-
-def ask_claude(prompt: str, model: str, timeout: int) -> str:
-    out = subprocess.run(
-        ["claude", "-p", "--model", model, "--output-format", "json"],
-        input=prompt, capture_output=True, text=True, timeout=timeout, check=False,
-    )
-    if out.returncode != 0:
-        raise RuntimeError(f"claude exited {out.returncode}: {out.stderr.strip()[:200]}")
-    return estimating.parse_claude_json(out.stdout)
 
 
 def save(path: str, cfg: dict, items: list) -> None:
@@ -58,7 +48,10 @@ def propose(args, cfg) -> None:
         with open(args.out) as fh:
             items = json.load(fh).get("proposals", [])
     done = {p["number"] for p in items}
-    model = cfg["models"].get(args.model, args.model)
+    try:
+        prof = agents.profile(args.model, cfg["models"])
+    except agents.AgentError as exc:
+        cli.die(str(exc))
     for issue in issues:
         if issue["number"] in done:
             continue
@@ -66,8 +59,8 @@ def propose(args, cfg) -> None:
         prompt = estimating.build_prompt({"identifier": ident, "title": issue["title"], "description": issue["body"]}, cfg)
         answer = None
         try:
-            answer = estimating.parse_answer(ask_claude(prompt, model, args.timeout))
-        except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+            answer = estimating.parse_answer(agents.ask(prof, prompt, args.timeout))
+        except (agents.AgentError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             print(f"  {ident}: no answer ({exc})")
         hints = estimating.risk_hints(f"{issue['title']}\n{issue['body'] or ''}", cfg)
         try:
@@ -117,7 +110,7 @@ def main() -> None:
     p.add_argument("--unsized-only", action="store_true", help="skip issues that already have a size: label (no double-check)")
     p.add_argument("--limit", type=int, help="ask about at most this many issues")
     p.add_argument("--only", nargs="*", help="only these issues, e.g. 12 13")
-    p.add_argument("--timeout", type=int, default=180, help="seconds per claude call")
+    p.add_argument("--timeout", type=int, default=180, help="seconds per model call")
     args = p.parse_args()
     cfg = cli.load(args)
     try:

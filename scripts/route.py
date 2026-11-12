@@ -63,9 +63,9 @@ def main() -> None:
     try:
         table = routing.parse_table(open(args.doc or cfg["orchestration_doc"]).read())
         choice = routing.select(table, args.role, size=size, risk=risk, variant=args.variant)
+        flags = routing.worker_flags(choice, cfg["models"])
     except (OSError, routing.RoutingError) as exc:
         cli.die(str(exc))
-    flags = routing.worker_flags(choice, cfg["models"])
     if args.shell:
         print(" ".join(shlex.quote(f) for f in flags))
     else:

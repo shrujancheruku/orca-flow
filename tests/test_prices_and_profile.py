@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from flowlib import estimating, prices, profiler, transcripts
+from flowlib import agents, estimating, prices, profiler, transcripts
 
 from .helpers import cfg
 
@@ -83,7 +83,7 @@ class EstimatingTest(unittest.TestCase):
             estimating.parse_answer('{"size": "XXL"}')
 
     def test_claude_json(self):
-        self.assertEqual(estimating.parse_claude_json('{"result": "hi", "is_error": false}'), "hi")
+        self.assertEqual(agents.parse_claude_json('{"result": "hi", "is_error": false}'), "hi")
 
     def test_risk_hints(self):
         hints = estimating.risk_hints("Touches packages/records/src/a.ts and auth.", cfg())

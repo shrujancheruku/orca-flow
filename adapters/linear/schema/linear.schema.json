@@ -99,8 +99,21 @@
     "orchestration_doc": { "type": "string" },
     "models": {
       "type": "object",
-      "description": "Routing model name -> the id passed to orca worker-start --model.",
-      "additionalProperties": { "type": "string" }
+      "description": "Routing-table model name -> a model id for --model on Claude, or {agent, model} for another Orca agent. See flowlib/agents.py.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["model"],
+            "additionalProperties": false,
+            "properties": {
+              "agent": { "type": "string", "default": "claude", "description": "An Orca agent id (claude, codex, opencode, ...)." },
+              "model": { "type": "string" }
+            }
+          }
+        ]
+      }
     },
     "slack_prefix": { "type": "string", "description": "Channels are #<prefix>-work, #<prefix>-needs-you and #<prefix>-prs." }
   }

@@ -1,7 +1,7 @@
 {
   "name": "flow",
   "description": "Matt Pocock's skills on Orca, with GitHub Issues as the tracker. Linear is an optional adapter.",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "author": { "name": "Shrujan Cheruku" },
   "license": "MIT",
   "keywords": ["github", "orca", "orchestration", "mattpocock-skills", "linear"]

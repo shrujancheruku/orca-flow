@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from . import config, estimating
+from . import agents, config, estimating
 
 HEADING = "model routing"
 ROLES = ("coordinator", "scout", "build", "merge", "check", "review", "fix")
@@ -50,8 +50,8 @@ def parse_table(markdown: str) -> dict:
         if not key:
             continue
         model = cell["model"].strip("` ").lower()
-        if model not in ("haiku", "sonnet", "opus", "fable"):
-            raise RoutingError(f"row {key!r}: unknown model {cell['model']!r}")
+        if not model:
+            raise RoutingError(f"row {key!r} names no model")
         table[key] = {
             "model": model,
             "effort": cell["effort"].strip("` ").lower() or None,
@@ -102,12 +102,15 @@ def select(table: dict, role: str, size=None, risk: bool = False, variant=None) 
 
 
 def worker_flags(choice: dict, models: dict) -> list:
-    """The --model/--effort flags for `orca orchestration worker-start`.
+    """The --agent/--model/--effort flags for `orca orchestration worker-start`.
 
     --model is always passed: the user's own settings default to Opus.
     """
-    model_id = models.get(choice["model"], choice["model"])
-    flags = ["--model", model_id]
+    try:
+        prof = agents.profile(choice["model"], models)
+    except agents.AgentError as exc:
+        raise RoutingError(f"row {choice.get('key', '?')!r}: {exc}") from exc
+    flags = ["--agent", prof["agent"], "--model", prof["model"]]
     if choice.get("effort"):
         flags += ["--effort", choice["effort"]]
     return flags

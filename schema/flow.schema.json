@@ -47,8 +47,21 @@
     "orchestration_doc": { "type": "string", "default": "docs/agents/orchestration.md" },
     "models": {
       "type": "object",
-      "additionalProperties": { "type": "string" },
-      "description": "Aliases passed to --model. Keys are haiku, sonnet and opus."
+      "description": "Routing-table model name -> a model id for --model on Claude, or {agent, model} for another Orca agent. See flowlib/agents.py.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["model"],
+            "additionalProperties": false,
+            "properties": {
+              "agent": { "type": "string", "default": "claude", "description": "An Orca agent id (claude, codex, opencode, ...)." },
+              "model": { "type": "string" }
+            }
+          }
+        ]
+      }
     },
     "slack_prefix": { "type": "string", "description": "Channels are #<prefix>-prs and #<prefix>-needs-you." }
   }

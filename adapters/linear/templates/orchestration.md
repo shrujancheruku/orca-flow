@@ -6,7 +6,7 @@ How a spec gets built here. `/flow:build` follows this file.
 
 - **Procedure:** Matt Pocock's `/implement-spec`, unmodified. Read its `SKILL.md` and follow it.
 - **Policy:** this file. Where it and `implement-spec` differ, this file wins.
-- **Executor:** Orca. The implementer, merger, fixer and reviewer are Orca workers, started with `orca orchestration worker-start`. Short read-only jobs (exploration, `code-review`'s two reviewers) are Claude subagents inside a worker.
+- **Executor:** Orca. The implementer, merger, fixer and reviewer are Orca workers, started with `orca orchestration worker-start`. Short read-only jobs (exploration, `code-review`'s two reviewers) are subagents inside a worker. On an agent with no subagents, they become their own Orca workers.
 - **Tracker:** Linear. See `docs/agents/issue-tracker.md`.
 - **Measurement:** `{{FLOW_SCRIPTS}}/profile.py`.
 

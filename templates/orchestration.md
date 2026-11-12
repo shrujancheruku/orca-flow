@@ -6,7 +6,7 @@ How a spec gets built here. `/flow:build` follows this file. Tickets are GitHub 
 
 - **Procedure:** Matt Pocock's `/implement-spec`, unmodified. Read its `SKILL.md` and follow it.
 - **Policy:** this file. Where it and `implement-spec` differ, this file wins.
-- **Executor:** Orca. The implementer, merger, checker, fixer and reviewer are Orca workers. Short read-only jobs (exploration, `code-review`'s two reviewers) are Claude subagents inside a worker.
+- **Executor:** Orca. The implementer, merger, checker, fixer and reviewer are Orca workers. Short read-only jobs (exploration, `code-review`'s two reviewers) are subagents inside a worker. On an agent with no subagents, they become their own Orca workers.
 - **Tracker:** GitHub Issues. See `docs/agents/issue-tracker.md`.
 - **Measurement:** `{{FLOW_SCRIPTS}}/profile.py`.
 
@@ -14,7 +14,7 @@ How a spec gets built here. `/flow:build` follows this file. Tickets are GitHub 
 
 ## Model routing
 
-Before every worker, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role> --ticket <n> --lookup` and pass the `flags` and `task_title` it prints. Read the row from this table each time; never route from memory. Always pass `--model`: the user's own settings default to Opus.
+Before every worker, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role> --ticket <n> --lookup` and pass the `flags` (`--agent`, `--model`, `--effort`) and `task_title` it prints. Read the row from this table each time; never route from memory. The Model column names a profile in `models` in `docs/agents/flow.json`, which says which Orca agent and model id it runs on. Always pass `--model`: the user's own settings default to Opus.
 
 | Key | Role | Model | Effort | Notes |
 |---|---|---|---|---|
@@ -44,7 +44,7 @@ Put the model in the Orca task title: `#123 · build · haiku`. The profiler rea
 
 1. `orca reference find https://github.com/{{REPO}}/issues/<n> --json` first. If a workspace or agent is already attached to the issue, resume or read it instead of starting another. (Orca wants the issue URL; a bare number is not supported.)
 2. `orca worktree create --issue <n> --name "<n>-<slug>" --base-branch integration/<milestone-slug> --no-parent --json` makes the ticket's worktree and links it to the issue.
-3. `orca orchestration worker-start --worktree issue:<n> --agent claude --task-title "<task_title from route.py>" <flags from route.py> --spec-file -`, with the brief on stdin. The brief holds context pointers: the issue URL, the spec, the exploration notes, the integration branch.
+3. `orca orchestration worker-start --worktree issue:<n> --task-title "<task_title from route.py>" <flags from route.py> --spec-file -`, with the brief on stdin. The brief holds context pointers: the issue URL, the spec, the exploration notes, the integration branch.
 
 The merger, checker, fixer and reviewer start the same way: a `--task-title` of the shape `#<n> · <role> · <model>`, and the flags from `route.py`.
 

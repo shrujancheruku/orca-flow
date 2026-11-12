@@ -66,10 +66,22 @@ class RoutingTest(unittest.TestCase):
 
     def test_flags_always_name_the_model(self):
         c = routing.select(self.table, "build", size="S")
-        self.assertEqual(routing.worker_flags(c, {"haiku": "haiku"}), ["--model", "haiku"])
+        self.assertEqual(routing.worker_flags(c, {"haiku": "haiku"}), ["--agent", "claude", "--model", "haiku"])
         c = routing.select(self.table, "build", size="M")
         self.assertEqual(routing.worker_flags(c, {"sonnet": "claude-sonnet-x"}),
-                         ["--model", "claude-sonnet-x", "--effort", "medium"])
+                         ["--agent", "claude", "--model", "claude-sonnet-x", "--effort", "medium"])
+
+    def test_a_profile_can_name_another_agent(self):
+        table = routing.parse_table(
+            "## Model routing\n\n| Key | Model | Effort |\n|---|---|---|\n| build | coder | |\n"
+        )
+        c = routing.select(table, "build", size="S")
+        models = {"coder": {"agent": "opencode", "model": "openrouter/qwen/qwen3-coder"}}
+        self.assertEqual(routing.worker_flags(c, models),
+                         ["--agent", "opencode", "--model", "openrouter/qwen/qwen3-coder"])
+        self.assertEqual(routing.task_title("12", "build", c), "#12 · build · coder")
+        with self.assertRaises(routing.RoutingError):
+            routing.worker_flags(c, {"haiku": "haiku"})
 
     def test_task_title_round_trip(self):
         c = routing.select(self.table, "build", size="S")

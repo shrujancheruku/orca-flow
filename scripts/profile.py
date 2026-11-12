@@ -30,17 +30,12 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, orca, prices, profiler, routing, transcripts  # noqa: E402
+from flowlib import agents, cli, orca, prices, profiler, routing, transcripts  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
 from flowlib.transcripts import parse_ts  # noqa: E402
 
 VIEWER = Path(__file__).resolve().parent.parent / "viewer" / "profile.html"
 MERGED_WORDS = ("merged", "success", "succeeded", "done", "completed", "landed")
-
-
-def claude_projects_root() -> Path:
-    base = os.environ.get("CLAUDE_CONFIG_DIR") or str(Path.home() / ".claude")
-    return Path(base).expanduser() / "projects"
 
 
 def locate(worker: dict, root: Path, show) -> list:
@@ -89,7 +84,9 @@ def main() -> None:
     if not raw:
         cli.die(f"run {args.run} has no workers (orca orchestration worker-list --run {args.run} --json)")
 
-    root = claude_projects_root()
+    # Transcripts are read as Claude's; a worker on another agent shows up as
+    # missing until flowlib/agents.py and flowlib/transcripts.py learn it.
+    root = agents.transcript_root(agents.DEFAULT_AGENT)
     workers, missing = [], []
     for item in raw:
         w = orca.normalise_worker(item)

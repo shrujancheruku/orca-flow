@@ -21,7 +21,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts"))
 
-from flowlib import estimating  # noqa: E402
+from flowlib import agents, estimating  # noqa: E402
 from linearlib import cli, mapping  # noqa: E402
 from linearlib import linear as L  # noqa: E402
 from linearlib.workspace import Workspace  # noqa: E402
@@ -34,16 +34,6 @@ UNESTIMATED = """query($team: ID!, $after: String) {
     pageInfo { hasNextPage endCursor } } }"""
 ISSUE_UPDATE = """mutation($id: String!, $input: IssueUpdateInput!) {
   issueUpdate(id: $id, input: $input) { success } }"""
-
-
-def ask_claude(prompt: str, model: str, timeout: int) -> str:
-    out = subprocess.run(
-        ["claude", "-p", "--model", model, "--output-format", "json"],
-        input=prompt, capture_output=True, text=True, timeout=timeout, check=False,
-    )
-    if out.returncode != 0:
-        raise RuntimeError(f"claude exited {out.returncode}: {out.stderr.strip()[:200]}")
-    return estimating.parse_claude_json(out.stdout)
 
 
 def propose(args, cfg) -> None:
@@ -64,8 +54,8 @@ def propose(args, cfg) -> None:
             continue
         prompt = estimating.build_prompt(issue, cfg)
         try:
-            answer = estimating.parse_answer(ask_claude(prompt, cfg["models"].get(args.model, args.model), args.timeout))
-        except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+            answer = estimating.parse_answer(agents.ask(agents.profile(args.model, cfg["models"]), prompt, args.timeout))
+        except (agents.AgentError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             print(f"  {issue['identifier']}: no answer ({exc})")
             continue
         hints = estimating.risk_hints(f"{issue['title']}\n{issue.get('description') or ''}", cfg)

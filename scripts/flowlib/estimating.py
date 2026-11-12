@@ -48,13 +48,6 @@ def parse_answer(text: str) -> dict:
     return {"size": size, "risk": bool(data.get("risk")), "reason": str(data.get("reason", ""))[:300]}
 
 
-def parse_claude_json(stdout: str) -> str:
-    """`claude -p --output-format json` prints one object with a `result` string."""
-    data = json.loads(stdout)
-    if data.get("is_error"):
-        raise ValueError(f"claude reported an error: {str(data.get('result'))[:200]}")
-    return data.get("result", "")
-
 
 def path_hints(text: str, cfg: dict) -> list:
     """Configured risk paths that the text names (a literal prefix, or a path that matches the glob)."""

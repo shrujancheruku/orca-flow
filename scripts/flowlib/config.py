@@ -1,7 +1,7 @@
 """Load and check docs/agents/flow.json, the plugin's per-repo config.
 
 Small on purpose: the tracker, the repo, the label names, the risk paths, the
-Slack prefix and the model aliases. The Linear adapter keeps its own keys in
+Slack prefix and the model profiles (flowlib/agents.py). The Linear adapter keeps its own keys in
 docs/agents/linear.json (see adapters/linear/).
 """
 
@@ -11,6 +11,8 @@ import copy
 import json
 import os
 from pathlib import Path
+
+from . import agents
 
 DEFAULT_PATH = "docs/agents/flow.json"
 TRACKERS = ("github", "linear")
@@ -55,7 +57,7 @@ def _merge(base: dict, over: dict) -> dict:
 
 def check(cfg: dict) -> list:
     """Return a list of problems. Empty means the config is usable."""
-    problems = []
+    problems = agents.check_models(cfg.get("models"))
     if cfg.get("tracker") not in TRACKERS:
         problems.append(f"tracker must be one of {', '.join(TRACKERS)}")
     repo = cfg.get("github_repo", "")
