@@ -1,0 +1,7 @@
+# Issues for this repo now live in Linear. GitHub Issues stay on so old links
+# and cross-references keep working, but new issues go to Linear.
+blank_issues_enabled: false
+contact_links:
+  - name: Open an issue in Linear
+    url: {{LINEAR_TEAM_URL}}
+    about: We track work in Linear ({{TEAM_KEY}}). New requests land in Triage.
