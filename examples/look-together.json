@@ -1,0 +1,24 @@
+{
+  "$schema": "../schema/linear.schema.json",
+  "workspace_id": "394da26f-d3e8-44f9-9d57-7f99e59e08a9",
+  "workspace_url_key": "shrujan-personal",
+  "team": { "key": "LOO", "id": "fe040a3b-3e42-42a0-a93c-9fa3e1c34c0b" },
+  "keychain_service": "linear-shrujan-personal",
+  "github_repo": "shrujancheruku/look-together",
+  "initiative": { "name": "Look Together MVP", "status": "Active" },
+  "labels": {
+    "workspace": ["wayfinder:grilling", "wayfinder:prototype", "wayfinder:research", "wayfinder:task"],
+    "retired": ["wayfinder:map"],
+    "unmapped": "keep"
+  },
+  "projects": {
+    "map_labels": ["wayfinder:map"],
+    "map_title_prefixes": ["Map:"],
+    "spec_title_prefixes": ["Spec:"]
+  },
+  "estimate_scale": { "linear_type": "tShirt", "sizes": { "S": 2, "M": 3, "L": 5 } },
+  "risk_paths": ["packages/records/**", "packages/protocol/**", "infra/**", "**/migrations/**", "**/session/**"],
+  "slack_prefix": "lt",
+  "mapping_file": "docs/agents/linear-mapping.json",
+  "orchestration_doc": "docs/agents/orchestration.md"
+}

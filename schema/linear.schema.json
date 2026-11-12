@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/linear-orca-flow/schema/linear.schema.json",
+  "title": "docs/agents/linear.json",
+  "description": "Per-repo settings for the flow plugin. Every project-specific value lives here.",
+  "type": "object",
+  "required": ["workspace_id", "workspace_url_key", "team", "keychain_service", "github_repo", "initiative"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "workspace_id": { "type": "string", "description": "Linear workspace (organization) id. Passed to orca linear --workspace." },
+    "workspace_url_key": { "type": "string", "description": "The workspace part of linear.app/<key>/..." },
+    "team": {
+      "type": "object",
+      "required": ["key", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "type": "string", "pattern": "^[A-Z0-9]{1,7}$" },
+        "id": { "type": "string" }
+      }
+    },
+    "keychain_service": { "type": "string", "description": "macOS Keychain service holding the Linear API key. LINEAR_KEYCHAIN_SERVICE overrides it." },
+    "github_repo": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+    "initiative": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "The initiative for the current phase." },
+        "status": { "enum": ["Planned", "Active", "Completed"] }
+      }
+    },
+    "states": {
+      "type": "object",
+      "description": "Linear state names, keyed by role.",
+      "additionalProperties": false,
+      "properties": {
+        "triage": { "type": "string" }, "backlog": { "type": "string" }, "todo": { "type": "string" },
+        "in_progress": { "type": "string" }, "in_review": { "type": "string" }, "done": { "type": "string" },
+        "canceled": { "type": "string" }, "duplicate": { "type": "string" }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "needs_info": { "type": "string" },
+        "ready_for_agent": { "type": "string" },
+        "ready_for_human": { "type": "string" },
+        "risk": { "type": "string" },
+        "wayfinder_prefix": { "type": "string" },
+        "retired": { "type": "array", "items": { "type": "string" }, "description": "GitHub labels dropped in the move." },
+        "rename": { "type": "object", "additionalProperties": { "type": "string" }, "description": "GitHub label -> Linear label." },
+        "size_prefix": { "type": "string", "description": "GitHub labels like size:M become the Linear estimate." },
+        "unmapped": { "enum": ["keep", "drop"] },
+        "workspace": { "type": "array", "items": { "type": "string" }, "description": "Labels created at workspace level, shared by every team." }
+      }
+    },
+    "project_labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "wayfinder": { "type": "string" }, "build": { "type": "string" } }
+    },
+    "projects": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "map_labels": { "type": "array", "items": { "type": "string" } },
+        "map_title_prefixes": { "type": "array", "items": { "type": "string" } },
+        "spec_title_prefixes": { "type": "array", "items": { "type": "string" } },
+        "extra": {
+          "type": "array",
+          "description": "Issues that become projects though no label or prefix says so.",
+          "items": {
+            "type": "object", "required": ["number", "kind"], "additionalProperties": false,
+            "properties": { "number": { "type": "integer" }, "kind": { "enum": ["map", "spec"] } }
+          }
+        },
+        "names": { "type": "object", "additionalProperties": { "type": "string" }, "description": "GitHub issue number -> project name." },
+        "summary_sections": { "type": "array", "items": { "type": "string" }, "description": "Sections tried for the summary when there is no Destination." }
+      }
+    },
+    "estimate_scale": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "linear_type": { "enum": ["notUsed", "exponential", "fibonacci", "linear", "tShirt"] },
+        "sizes": {
+          "type": "object", "required": ["S", "M", "L"], "additionalProperties": false,
+          "properties": { "S": { "type": "number" }, "M": { "type": "number" }, "L": { "type": "number" } }
+        }
+      }
+    },
+    "risk_paths": { "type": "array", "items": { "type": "string" }, "description": "Globs. A ticket touching one gets the risk label." },
+    "risk_keywords": { "type": "array", "items": { "type": "string" } },
+    "mapping_file": { "type": "string" },
+    "orchestration_doc": { "type": "string" },
+    "models": {
+      "type": "object",
+      "description": "Routing model name -> the id passed to orca worker-start --model.",
+      "additionalProperties": { "type": "string" }
+    },
+    "slack_prefix": { "type": "string", "description": "Channels are #<prefix>-work, #<prefix>-needs-you and #<prefix>-prs." }
+  }
+}
