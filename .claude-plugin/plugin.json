@@ -1,0 +1,8 @@
+{
+  "name": "flow",
+  "description": "Run Matt Pocock's skills with Linear as the tracker and Orca as the executor, and move a repo's GitHub issues to Linear.",
+  "version": "0.1.0",
+  "author": { "name": "Shrujan Cheruku" },
+  "license": "MIT",
+  "keywords": ["linear", "orca", "orchestration", "migration", "mattpocock-skills"]
+}

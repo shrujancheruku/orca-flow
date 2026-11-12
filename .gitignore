@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+estimate-proposals.json
+profile-*.json
+profile-*.html
+.github-cache*.json

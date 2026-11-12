@@ -1,0 +1,17 @@
+{
+  "name": "linear-orca-flow",
+  "owner": { "name": "Shrujan Cheruku" },
+  "metadata": {
+    "description": "Matt Pocock's skills on Linear and Orca.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "flow",
+      "source": "./",
+      "description": "Run Matt Pocock's skills with Linear as the tracker and Orca as the executor, and move a repo's GitHub issues to Linear.",
+      "category": "productivity",
+      "tags": ["linear", "orca", "orchestration"]
+    }
+  ]
+}
