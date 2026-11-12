@@ -14,7 +14,11 @@ tries, in order: transcript paths in the worker record (worker-show --full),
 then ~/.claude/projects/<encoded worktree path>/. When a worker yields nothing
 it stops with the list, rather than report a cost that is too low.
 
---project-update <project id> --apply posts a short summary to Linear.
+Tickets are `#N` issue numbers, read from the Orca task titles (`#123 · build · haiku`).
+
+--pr <number> --apply posts the short summary as a comment on that pull request
+(`gh pr comment`); the coordinator runs it on the milestone's integration PR.
+Without --apply it prints the summary only.
 """
 
 from __future__ import annotations
@@ -26,12 +30,11 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, orca, prices, profiler, transcripts  # noqa: E402
+from flowlib import cli, orca, prices, profiler, routing, transcripts  # noqa: E402
+from flowlib import github as gh_mod  # noqa: E402
 from flowlib.transcripts import parse_ts  # noqa: E402
 
 VIEWER = Path(__file__).resolve().parent.parent / "viewer" / "profile.html"
-PROJECT_UPDATE = """mutation($input: ProjectUpdateCreateInput!) {
-  projectUpdateCreate(input: $input) { success projectUpdate { id url } } }"""
 MERGED_WORDS = ("merged", "success", "succeeded", "done", "completed", "landed")
 
 
@@ -65,14 +68,12 @@ def main() -> None:
     p.add_argument("--run", required=True, help="Orca Run id")
     p.add_argument("--workers-json", help="read the worker list from this file instead of Orca")
     p.add_argument("--coordinator", help="the coordinator's transcript (.jsonl path)")
-    p.add_argument("--merged", default="", help="comma-separated identifiers that merged, added to what workers report")
+    p.add_argument("--merged", default="", help="comma-separated ticket ids (#12,#13) that merged, added to what workers report")
     p.add_argument("--slots", type=int, default=int(os.environ.get("FLOW_SLOTS", "4")), help="worker slots (default 4)")
     p.add_argument("--out", help="JSON output (default profile-<run>.json)")
     p.add_argument("--allow-missing", action="store_true", help="report even when some workers have no transcript")
-    p.add_argument("--project-update", help="Linear project id to post the summary to (with --apply)")
-    p.add_argument("--health", default="onTrack", choices=["onTrack", "atRisk", "offTrack"])
+    p.add_argument("--pr", help="integration PR number to comment the summary on (with --apply)")
     args = p.parse_args()
-    cfg = cli.load(args)
 
     if args.workers_json:
         with open(args.workers_json) as fh:
@@ -107,7 +108,7 @@ def main() -> None:
         sys.exit(2)
 
     coordinator = transcripts.summarise_file(args.coordinator) if args.coordinator else None
-    merged = {t.strip() for t in args.merged.split(",") if t.strip()}
+    merged = {routing.ticket_id(t) for t in args.merged.split(",") if t.strip()}
     for w in workers:
         title = w["task_title"] or ""
         if "· merge ·" in title and any(word in (w["outcome"] or "").lower() for word in MERGED_WORDS):
@@ -122,17 +123,21 @@ def main() -> None:
     html = out.with_suffix(".html")
     html.write_text(VIEWER.read_text().replace("/*PROFILE_DATA*/null", json.dumps(profile, default=str)))
     print(f"Wrote {out} and {html}.")
-    body = profiler.project_update_body(profile, prices.PRICES_AS_OF)
+    body = profiler.summary_body(profile, prices.PRICES_AS_OF)
     print("\n" + body)
 
-    if args.project_update:
-        client = cli.client(cfg, args.apply)
-        client.mutate("projectUpdateCreate", PROJECT_UPDATE,
-                      {"input": {"projectId": args.project_update, "body": body, "health": args.health}},
-                      f"post the run summary to project {args.project_update}")
-        if not args.apply:
-            cli.show_planned(client)
-
+    if args.pr:
+        cfg = cli.load(args)
+        gh = gh_mod.Gh(cfg["github_repo"], apply=args.apply)
+        try:
+            gh.write(["pr", "comment", str(gh_mod.ticket_number(args.pr)), "--repo", gh.repo, "--body-file", "-"],
+                     f"comment the run summary on PR #{gh_mod.ticket_number(args.pr)}", stdin=body)
+        except gh_mod.GitHubError as exc:
+            cli.die(str(exc))
+        if args.apply:
+            print(f"Commented on PR #{args.pr}.")
+        else:
+            gh.show_planned()
 
 if __name__ == "__main__":
     main()
