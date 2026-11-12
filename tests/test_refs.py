@@ -73,3 +73,16 @@ class RewriteTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProvenanceTest(unittest.TestCase):
+    def test_footer_keeps_its_github_link(self):
+        text = "Blocked by #42.\n\n_Moved from GitHub https://github.com/acme/app/issues/42, opened by @a._"
+        out = refs.rewrite_keeping(text, "tail", REPO, TABLE, PRS)
+        self.assertEqual(out.text, "Blocked by ABC-7.\n\n_Moved from GitHub https://github.com/acme/app/issues/42, opened by @a._")
+
+    def test_comment_head_keeps_its_original_link(self):
+        text = "**@a** on GitHub ([original](https://github.com/acme/app/issues/42#issuecomment-1)):\n\nSee #42."
+        out = refs.rewrite_keeping(text, "head", REPO, TABLE, PRS)
+        self.assertTrue(out.text.startswith("**@a** on GitHub ([original](https://github.com/acme/app/issues/42#issuecomment-1))"))
+        self.assertTrue(out.text.endswith("See ABC-7."))

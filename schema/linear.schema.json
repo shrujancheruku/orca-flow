@@ -22,7 +22,8 @@
     "keychain_service": { "type": "string", "description": "macOS Keychain service holding the Linear API key. LINEAR_KEYCHAIN_SERVICE overrides it." },
     "github_repo": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
     "initiative": {
-      "type": "object",
+      "type": ["object", "null"],
+      "description": "null when the workspace has initiatives off (they may need a paid Linear plan).",
       "required": ["name"],
       "additionalProperties": false,
       "properties": {
@@ -50,6 +51,7 @@
         "risk": { "type": "string" },
         "wayfinder_prefix": { "type": "string" },
         "retired": { "type": "array", "items": { "type": "string" }, "description": "GitHub labels dropped in the move." },
+        "state_roles": { "type": "array", "items": { "type": "string" }, "description": "GitHub labels whose meaning becomes the Linear state (needs-triage, wontfix, duplicate, invalid). Always dropped." },
         "rename": { "type": "object", "additionalProperties": { "type": "string" }, "description": "GitHub label -> Linear label." },
         "size_prefix": { "type": "string", "description": "GitHub labels like size:M become the Linear estimate." },
         "unmapped": { "enum": ["keep", "drop"] },

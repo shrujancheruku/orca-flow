@@ -48,6 +48,17 @@ class LabelMappingTest(unittest.TestCase):
         self.assertEqual(out["estimate"], 5)
         self.assertEqual(out["labels"], [])
 
+    def test_record_ids_are_stable_version_4_uuids(self):
+        import uuid
+        a = mapping.stable_id("issue", "198")
+        self.assertEqual(a, mapping.stable_id("issue", "198"))
+        self.assertEqual(uuid.UUID(a).version, 4)
+
+    def test_state_role_labels_are_dropped(self):
+        out = mapping.map_labels(["needs-triage", "wontfix", "duplicate", "invalid"], self.cfg)
+        self.assertEqual(out["labels"], [])
+        self.assertEqual(out["unmapped"], [])
+
     def test_unmapped_label_is_kept_and_reported(self):
         out = mapping.map_labels(["documentation"], self.cfg)
         self.assertEqual(out["labels"], ["documentation"])

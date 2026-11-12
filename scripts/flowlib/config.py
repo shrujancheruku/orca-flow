@@ -30,6 +30,7 @@ DEFAULTS = {
         "risk": "risk",
         "wayfinder_prefix": "wayfinder:",
         "retired": ["wayfinder:map"],
+        "state_roles": ["needs-triage", "wontfix", "duplicate", "invalid"],
         "rename": {"bug": "Bug", "enhancement": "Feature"},
         "size_prefix": "size:",
         "unmapped": "keep",
@@ -63,8 +64,13 @@ REQUIRED = [
     ("team", "id"),
     ("keychain_service",),
     ("github_repo",),
-    ("initiative", "name"),
 ]
+
+
+def initiative_name(cfg: dict):
+    """The initiative's name, or None when the config sets "initiative": null (initiatives off)."""
+    ini = cfg.get("initiative")
+    return ini["name"] if ini else None
 
 
 class ConfigError(Exception):
@@ -90,6 +96,10 @@ def check(cfg: dict) -> list:
             node = node.get(key) if isinstance(node, dict) else None
         if node in (None, ""):
             problems.append("missing " + ".".join(path))
+    if "initiative" not in cfg:
+        problems.append("missing initiative (an object with a name, or null when the workspace has initiatives off)")
+    elif cfg["initiative"] is not None and not cfg["initiative"].get("name"):
+        problems.append("missing initiative.name")
     repo = cfg.get("github_repo", "")
     if repo and repo.count("/") != 1:
         problems.append("github_repo must be owner/name")

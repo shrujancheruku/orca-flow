@@ -20,6 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from flowlib.config import initiative_name  # noqa: E402
 from flowlib import cli, mapping  # noqa: E402
 from flowlib import linear as L  # noqa: E402
 from flowlib.workspace import Workspace  # noqa: E402
@@ -92,10 +93,11 @@ def main() -> None:
                 "teamIds": [cfg["team"]["id"]], "statusId": ws.project_status_id("started"),
                 "labelIds": [ws.project_label_id(label)],
             }}, f"create {args.kind} project {args.name!r} labelled {label}")
-            if res:
+            if res and initiative_name(cfg):
                 client.mutate("initiativeToProjectCreate", LINK, {"input": {
-                    "projectId": res["project"]["id"], "initiativeId": ws.initiative_id(cfg["initiative"]["name"])}},
+                    "projectId": res["project"]["id"], "initiativeId": ws.initiative_id(initiative_name(cfg))}},
                     "link it to the initiative")
+            if res:
                 print(res["project"]["url"])
         else:
             node = find(client, args.project)

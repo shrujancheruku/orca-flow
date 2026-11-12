@@ -54,7 +54,8 @@ def wanted_labels(cfg: dict, github_labels: list) -> list:
 
 def main() -> None:
     p = cli.parser(__doc__)
-    p.add_argument("--skip-github-labels", action="store_true", help="do not read the repo's label list")
+    p.add_argument("--skip-github-labels", action="store_true", help="do not read the labels the repo's issues use")
+    p.add_argument("--github-cache", help="read GitHub issues from this JSON file (as written by migrate.py)")
     args = p.parse_args()
     cfg = cli.load(args)
     client = cli.client(cfg, args.apply)
@@ -96,8 +97,13 @@ def main() -> None:
 
     github_labels = []
     if not args.skip_github_labels:
-        out = github.gh(["label", "list", "--repo", cfg["github_repo"], "--limit", "500", "--json", "name"])
-        github_labels = [l["name"] for l in json.loads(out)]
+        # Only labels some issue carries: a repo's unused defaults never reach the workspace.
+        if args.github_cache:
+            with open(args.github_cache) as f:
+                issues = json.load(f)
+        else:
+            issues = github.fetch_issues(cfg["github_repo"])
+        github_labels = sorted({name for issue in issues for name in issue["labels"]})
     cli.heading("Workspace labels")
     for name in wanted_labels(cfg, github_labels):
         if ws.label_id(name):
@@ -117,13 +123,21 @@ def main() -> None:
 
     cli.heading("Initiative")
     ini = cfg["initiative"]
-    if ws.initiative_id(ini["name"]):
+    if ini is None:
+        print("  none in the config: projects are not grouped under an initiative")
+    elif ws.initiative_id(ini["name"]):
         print(f"  {ini['name']}: present")
     else:
         body = {"name": ini["name"], "status": ini.get("status", "Active")}
         if ini.get("description"):
             body["description"] = ini["description"]
-        client.mutate("initiativeCreate", INITIATIVE_CREATE, {"input": body}, f"create initiative {ini['name']!r}")
+        try:
+            client.mutate("initiativeCreate", INITIATIVE_CREATE, {"input": body}, f"create initiative {ini['name']!r}")
+        except LinearError as exc:
+            if "disabled" not in str(exc).lower():
+                raise
+            cli.die("Initiatives are off in this workspace. Turn them on in Linear's settings "
+                    "(they may need a paid plan), or set \"initiative\": null in the config.")
 
     cli.heading("Summary")
     if args.apply:

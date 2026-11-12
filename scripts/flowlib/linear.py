@@ -99,7 +99,11 @@ class LinearClient:
         data = self._transport(payload)
         errors = data.get("errors")
         if errors:
-            messages = "; ".join(e.get("message", "?") for e in errors)
+            def detail(e):
+                ext = e.get("extensions") or {}
+                extra = ext.get("userPresentableMessage") or ext.get("validationErrors") or ""
+                return e.get("message", "?") + (f" ({extra})" if extra else "")
+            messages = "; ".join(detail(e) for e in errors)
             raise LinearError(f"Linear error: {messages}")
         return data.get("data") or {}
 

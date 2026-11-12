@@ -5,6 +5,7 @@ No I/O here. migrate.py fetches, calls build_plan(), then carries the plan out.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -20,7 +21,10 @@ SIZE_LETTERS = ("XS", "S", "M", "L", "XL")
 
 def stable_id(*parts: str) -> str:
     """Same input, same id: reruns find what the last run created."""
-    return str(uuid.uuid5(ID_NAMESPACE, "|".join(str(p) for p in parts)))
+    # Hash-derived, so a rerun finds the same record, but stamped as version 4:
+    # Linear refuses any other UUID version.
+    derived = uuid.uuid5(ID_NAMESPACE, "|".join(str(p) for p in parts))
+    return str(uuid.UUID(bytes=derived.bytes, version=4))
 
 
 # ---- classification -------------------------------------------------------
@@ -148,7 +152,7 @@ def map_labels(labels: list, cfg: dict) -> dict:
     Returns {"labels": [...], "estimate": n|None, "dropped": [...], "unmapped": [...]}.
     """
     lab = cfg["labels"]
-    retired = {l.lower() for l in lab.get("retired", [])}
+    retired = {l.lower() for l in lab.get("retired", []) + lab.get("state_roles", [])}
     rename = {k.lower(): v for k, v in lab.get("rename", {}).items()}
     known = {
         lab["needs_info"].lower(),
@@ -396,6 +400,10 @@ def summarise(plan: dict, issues: list) -> dict:
 # ---- the mapping file -----------------------------------------------------
 
 
+def _digest(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 class MappingFile:
     """GitHub number -> Linear record. Saved after every write, so reruns resume."""
 
@@ -411,6 +419,7 @@ class MappingFile:
             "projects": {},
             "comments": {},
             "relations": {},
+            "relinked": {},  # record id -> digest of the text the ref rewrite last wrote
         }
 
     @classmethod
@@ -427,6 +436,13 @@ class MappingFile:
                 if key in loaded:
                     m.data[key] = loaded[key]
         return m
+
+    def relinked(self, record_id: str, text: str) -> bool:
+        """True when the ref rewrite already wrote this exact text to this record."""
+        return self.data["relinked"].get(record_id) == _digest(text)
+
+    def record_relink(self, record_id: str, text: str) -> None:
+        self.data["relinked"][record_id] = _digest(text)
 
     def save(self) -> None:
         directory = os.path.dirname(os.path.abspath(self.path))

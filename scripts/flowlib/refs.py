@@ -53,6 +53,25 @@ class Result:
         return bool(self.rewritten)
 
 
+def rewrite_keeping(text: str, keep: str, repo: str, refs: dict, prs: set) -> Result:
+    """Rewrite all but our own provenance line, whose GitHub link must survive.
+
+    keep="tail" leaves the last paragraph (the "Moved from GitHub" footer) as it is;
+    keep="head" leaves the first (a comment's "@author on GitHub ... original" line).
+    """
+    if keep == "tail":
+        body, sep, kept = text.rpartition("\n\n")
+        if not sep:
+            body, kept = "", text
+        result = rewrite_text(body, repo, refs, prs)
+        result.text = result.text + sep + kept
+    else:
+        kept, sep, body = text.partition("\n\n")
+        result = rewrite_text(body, repo, refs, prs)
+        result.text = kept + sep + result.text
+    return result
+
+
 def rewrite_text(text: str, repo: str, refs: dict, prs: set) -> Result:
     pattern = _patterns(repo)
     result = Result()

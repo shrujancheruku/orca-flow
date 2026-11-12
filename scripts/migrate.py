@@ -20,6 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from flowlib.config import initiative_name  # noqa: E402
 from flowlib import cli, github, mapping, refs  # noqa: E402
 from flowlib import linear as L  # noqa: E402
 from flowlib.workspace import Workspace  # noqa: E402
@@ -37,9 +38,11 @@ COMMENT_CREATE = """mutation($input: CommentCreateInput!) {
   commentCreate(input: $input) { success comment { id } } }"""
 RELATION_CREATE = """mutation($input: IssueRelationCreateInput!) {
   issueRelationCreate(input: $input) { success issueRelation { id } } }"""
-RELATIONS_BY_ID = """query($ids: [ID!], $after: String) {
-  issueRelations(first: 100, after: $after, filter: { id: { in: $ids } }) {
-    nodes { id } pageInfo { hasNextPage endCursor } } }"""
+# issueRelations takes no filter, so read each blocker's own relations instead.
+BLOCKER_RELATIONS = """query($ids: [ID!], $after: String) {
+  issues(first: 100, after: $after, filter: { id: { in: $ids } }) {
+    nodes { id relations(first: 250) { nodes { id type relatedIssue { id } } } }
+    pageInfo { hasNextPage endCursor } } }"""
 ATTACH = """mutation($input: AttachmentCreateInput!) {
   attachmentCreate(input: $input) { success } }"""
 ISSUE_UPDATE = """mutation($id: String!, $input: IssueUpdateInput!) {
@@ -75,8 +78,8 @@ def resolve(plan: dict, ws: Workspace, cfg: dict) -> dict:
             missing["project_labels"].add(project["label"])
         if not ws.project_status_id(project["status_type"]):
             missing["other"].append(f"project status of type {project['status_type']}")
-    if not ws.initiative_id(cfg["initiative"]["name"]):
-        missing["other"].append(f"initiative {cfg['initiative']['name']!r}")
+    if initiative_name(cfg) and not ws.initiative_id(initiative_name(cfg)):
+        missing["other"].append(f"initiative {initiative_name(cfg)!r}")
     return missing
 
 
@@ -200,7 +203,7 @@ def main() -> None:
 
     m = mapping.MappingFile.load(args.mapping or cfg["mapping_file"], cfg["github_repo"], cfg["team"]["key"])
     team_id = cfg["team"]["id"]
-    initiative_id = ws.initiative_id(cfg["initiative"]["name"])
+    initiative_id = ws.initiative_id(initiative_name(cfg)) if initiative_name(cfg) else None
 
     if "projects" in phases:
         cli.heading("Projects")
@@ -216,6 +219,8 @@ def main() -> None:
                 node = res["project"]
             m.record_project(proj["number"], node["id"], node["name"], node["url"])
             m.save()
+            if initiative_id is None:
+                continue
             linked = client.query(PROJECT_INITIATIVES, {"id": node["id"]})["project"]["initiatives"]["nodes"]
             if initiative_id not in {n["id"] for n in linked}:
                 client.mutate("initiativeToProjectCreate", LINK_INITIATIVE,
@@ -268,9 +273,17 @@ def main() -> None:
 
     if "relations" in phases:
         cli.heading("Blocking relations")
-        done = L.existing_ids(client, RELATIONS_BY_ID, "issueRelations", [r["id"] for r in plan["relations"]])
+        blockers = L.existing_ids(client, BLOCKER_RELATIONS, "issues",
+                                  sorted({m.issue(r["blocker"])["id"] for r in plan["relations"]}))
+        # A relation counts as done by its id or by its ends, in case Linear did not keep our id.
+        done = set()
+        for node in blockers.values():
+            for rel in node["relations"]["nodes"]:
+                if rel["type"] == "blocks":
+                    done |= {rel["id"], (node["id"], rel["relatedIssue"]["id"])}
         for r in plan["relations"]:
-            if r["id"] not in done:
+            ends = (m.issue(r["blocker"])["id"], m.issue(r["blocked"])["id"])
+            if r["id"] not in done and ends not in done:
                 client.mutate("issueRelationCreate", RELATION_CREATE, {"input": {
                     "id": r["id"], "type": "blocks",
                     "issueId": m.issue(r["blocker"])["id"], "relatedIssueId": m.issue(r["blocked"])["id"],
@@ -292,26 +305,30 @@ def main() -> None:
         table = m.ref_table()
         prs = github.fetch_pr_numbers(cfg["github_repo"])
         repo = cfg["github_repo"]
+
+        # Linear reformats Markdown on save, so a rerun cannot compare texts. The mapping file
+        # remembers a digest of what was written instead.
+        def relink(record_id, text, keep, mutation, query, node_id, field, what):
+            new = refs.rewrite_keeping(text, keep, repo, table, prs)
+            if new.changed and not m.relinked(record_id, new.text):
+                client.mutate(mutation, query, {"id": node_id, "input": {field: new.text}}, what)
+                m.record_relink(record_id, new.text)
+                m.save()
+
         for issue in plan["issues"]:
-            new = refs.rewrite_text(issue["description"], repo, table, prs)
-            if new.changed:
-                client.mutate("issueUpdate", ISSUE_UPDATE, {"id": m.issue(issue["number"])["id"],
-                              "input": {"description": new.text}}, f"refs in #{issue['number']}")
+            n = issue["number"]
+            relink(issue["id"], issue["description"], "tail",
+                   "issueUpdate", ISSUE_UPDATE, m.issue(n)["id"], "description", f"refs in #{n}")
             for c in issue["comments"]:
-                new_c = refs.rewrite_text(c["body"], repo, table, prs)
-                if new_c.changed:
-                    client.mutate("commentUpdate", COMMENT_UPDATE, {"id": c["id"], "input": {"body": new_c.text}},
-                                  f"refs in a comment on #{issue['number']}")
+                relink(c["id"], c["body"], "head",
+                       "commentUpdate", COMMENT_UPDATE, c["id"], "body", f"refs in a comment on #{n}")
         for proj in plan["projects"]:
-            new = refs.rewrite_text(proj["content"], repo, table, prs)
-            if new.changed:
-                client.mutate("projectUpdate", PROJECT_UPDATE, {"id": m.project(proj["number"])["id"],
-                              "input": {"content": new.text}}, f"refs in project #{proj['number']}")
+            n = proj["number"]
+            relink(proj["id"], proj["content"], "tail",
+                   "projectUpdate", PROJECT_UPDATE, m.project(n)["id"], "content", f"refs in project #{n}")
             for c in proj["comments"]:
-                new_c = refs.rewrite_text(c["body"], repo, table, prs)
-                if new_c.changed:
-                    client.mutate("commentUpdate", COMMENT_UPDATE, {"id": c["id"], "input": {"body": new_c.text}},
-                                  f"refs in a comment on project #{proj['number']}")
+                relink(c["id"], c["body"], "head",
+                       "commentUpdate", COMMENT_UPDATE, c["id"], "body", f"refs in a comment on project #{n}")
 
     cli.heading("Done")
     print(f"{len(client.done)} write(s). Mapping file: {m.path}. Next: verify.py.")

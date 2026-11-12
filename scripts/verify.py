@@ -15,6 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from flowlib.config import initiative_name  # noqa: E402
 from flowlib import cli, github, mapping  # noqa: E402
 from flowlib import linear as L  # noqa: E402
 
@@ -107,7 +108,7 @@ def main() -> None:
             problems.append(f"project #{x['number']}: status {node['status']['type']}, expected {x['status_type']}")
         if x["label"].lower() not in {l["name"].lower() for l in node["labels"]["nodes"]}:
             problems.append(f"project #{x['number']}: label {x['label']!r} missing")
-        if cfg["initiative"]["name"].lower() not in {n["name"].lower() for n in node["initiatives"]["nodes"]}:
+        if initiative_name(cfg) and initiative_name(cfg).lower() not in {n["name"].lower() for n in node["initiatives"]["nodes"]}:
             problems.append(f"project #{x['number']}: not in the initiative")
         if len(node["comments"]["nodes"]) < len(x["comments"]):
             problems.append(f"project #{x['number']}: comments missing")

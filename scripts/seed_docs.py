@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from flowlib.config import initiative_name  # noqa: E402
 from flowlib import cli, config as config_mod  # noqa: E402
 
 PLUGIN = Path(__file__).resolve().parent.parent
@@ -29,7 +30,7 @@ def values(cfg: dict) -> dict:
     return {
         "TEAM_KEY": cfg["team"]["key"],
         "WORKSPACE_ID": cfg["workspace_id"],
-        "INITIATIVE": cfg["initiative"]["name"],
+        "INITIATIVE": initiative_name(cfg) or "(none)",
         "FLOW_SCRIPTS": str(PLUGIN / "scripts"),
         "SLACK_PREFIX": cfg.get("slack_prefix") or "<prefix>",
         "LINEAR_TEAM_URL": f"{config_mod.linear_base_url(cfg)}/team/{cfg['team']['key']}/triage",

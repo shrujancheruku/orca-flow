@@ -14,7 +14,7 @@ Matt's skills are used as published. This plugin never edits them. It changes th
 
 | Matt's skills | Linear |
 | --- | --- |
-| A phase of work | An initiative |
+| A phase of work | An initiative (optional: set `"initiative": null` when the workspace has initiatives off) |
 | A wayfinder map | A project labelled `wayfinder`. The Destination is the summary; the rest is the content. |
 | A spec | A project labelled `build` |
 | A ticket | An issue in that project |
