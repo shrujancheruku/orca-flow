@@ -10,6 +10,8 @@ How a spec gets built here. `/flow:build` follows this file. Tickets are GitHub 
 - **Tracker:** GitHub Issues. See `docs/agents/issue-tracker.md`.
 - **Measurement:** `{{FLOW_SCRIPTS}}/profile.py`.
 
+`${CLAUDE_PLUGIN_ROOT}` is the installed `flow` plugin's folder. `/flow:build` expands it; outside it, run `claude plugin list` to find the path.
+
 ## Model routing
 
 Before every worker, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role> --ticket <n> --lookup` and pass the `flags` and `task_title` it prints. Read the row from this table each time; never route from memory. Always pass `--model`: the user's own settings default to Opus.

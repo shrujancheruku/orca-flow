@@ -53,6 +53,11 @@ class SeedDocsTest(unittest.TestCase):
             out = seed_docs.template(name, vals)
             self.assertNotIn("{{", out, name)
 
+    def test_seeded_docs_name_no_machine_path(self):
+        out = seed_docs.template("orchestration.md", seed_docs.values(cfg()))
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/scripts/route.py", out)
+        self.assertNotIn(str(seed_docs.PLUGIN), out)
+
     def repo(self, tracker=MATT, labels="# Triage\n", claude="# Rules\n\n## Agent skills\n\n### Domain docs\n\nMine.\n"):
         d = tempfile.mkdtemp()
         agents = Path(d, "docs/agents")

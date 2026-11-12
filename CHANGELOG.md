@@ -2,6 +2,12 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## 0.2.1 - 2026-11-12
+
+### Fixes
+
+- `seed_docs.py` wrote the plugin's install folder into `docs/agents/orchestration.md`, a path that broke on the next plugin version and on other machines. It now writes `${CLAUDE_PLUGIN_ROOT}/scripts` and says what that is.
+
 ## 0.2.0 - 2026-11-12
 
 GitHub Issues is now the default tracker, and the plugin is `orca-flow`: Matt Pocock's skills on Orca. All the Linear code moved into an optional adapter.

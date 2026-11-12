@@ -31,7 +31,7 @@ def values(cfg: dict) -> dict:
     size = cfg["labels"]["size"]
     return {
         "REPO": cfg["github_repo"],
-        "FLOW_SCRIPTS": str(PLUGIN / "scripts"),
+        "FLOW_SCRIPTS": "${CLAUDE_PLUGIN_ROOT}/scripts",
         "SLACK_PREFIX": cfg.get("slack_prefix") or "<prefix>",
         "SIZE_S": size["S"],
         "SIZE_M": size["M"],
