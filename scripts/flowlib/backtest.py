@@ -85,6 +85,7 @@ def cases(nodes: list, cfg: dict) -> list:
             "number": node["number"],
             "title": node["title"],
             "body": node.get("body") or "",
+            "created_at": node.get("createdAt"),
             "closed_at": node.get("closedAt"),
             "label_size": config.size_from_labels(cfg, labels),
             "pr": pr["number"],
