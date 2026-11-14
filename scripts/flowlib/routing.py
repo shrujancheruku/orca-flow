@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from . import agents, config, estimating
+from . import agents, config, estimating, repofacts
 
 HEADING = "model routing"
 ROLES = ("coordinator", "scout", "build", "merge", "check", "review", "fix")
@@ -61,16 +61,19 @@ def parse_table(markdown: str) -> dict:
     return table
 
 
-def ticket_facts(cfg: dict, labels, body: str = "", paths=()) -> dict:
+def ticket_facts(cfg: dict, labels, body: str = "", paths=(), tree=None) -> dict:
     """Size and risk for one ticket: the `size:` label, and the `risk` label or any configured risk path.
 
     Paths come from --paths and from the ticket body; a path named in the body
     raises the model even if the ticket only mentions it, which errs safe.
+    With `tree` (a repofacts.GitTree) a short path or a code name is looked up
+    in the repo, so `identity/standing.go` counts for `backend/internal/identity/**`.
     """
     reasons = []
     if config.has_risk_label(cfg, labels):
         reasons.append(f"label {cfg['labels']['risk']}")
-    reasons += estimating.path_hints("\n".join([body or ""] + list(paths)), cfg)
+    text = "\n".join([body or ""] + [f"`{p}`" for p in paths])
+    reasons += repofacts.risk_paths(text, tree or repofacts.EMPTY, cfg)
     return {"size": config.size_from_labels(cfg, labels), "risk": bool(reasons), "risk_reasons": reasons}
 
 

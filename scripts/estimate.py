@@ -62,7 +62,8 @@ def propose(args, cfg) -> None:
         cli.die(str(exc))
     index = similar.Index(backtest.cases(gh.closed_with_prs(), cfg)) if args.style == "examples" else None
     # run from the repo being sized: facts come from its checked-out HEAD
-    tree = repofacts.GitTree(cfg) if args.style == "facts" else None
+    here = repofacts.GitTree(cfg)
+    tree = here if args.style == "facts" else None
     for issue in issues:
         if issue["number"] in done:
             continue
@@ -77,7 +78,8 @@ def propose(args, cfg) -> None:
             c = estimating.combine(answers, cfg)
             answer = dict(answers[0], size=c["estimate"], reason=c["estimate_reason"], lines=c.get("estimate_lines"),
                           risk_kind=c["risk_kind"], risk=c["risk_kind"] is not None)
-        hints = estimating.risk_hints(f"{issue['title']}\n{issue['body'] or ''}", cfg)
+        text = f"{issue['title']}\n{issue['body'] or ''}"
+        hints = repofacts.risk_paths(text, here, cfg) + estimating.word_hints(text, cfg)
         try:
             item = proposals.make_proposal(issue, cfg, answer, hints)
         except ValueError:
@@ -181,9 +183,11 @@ def backtest_run(args, cfg) -> None:
         if examples is not None:
             r["examples"] = [e["number"] for e in examples]
         facts = None
+        # the repo as it was when the ticket was filed, not as its PR left it
+        tree = repofacts.GitTree(cfg, repofacts.rev_before(r["created_at"]))
+        r["risk_paths"] = repofacts.risk_paths(f"{r['title']}\n{r['body']}", tree, cfg)
         if args.style == "facts":
-            # the repo as it was when the ticket was filed, not as its PR left it
-            facts = repofacts.facts(r["body"], repofacts.GitTree(cfg, repofacts.rev_before(r["created_at"])))
+            facts = repofacts.facts(r["body"], tree)
             r["facts"] = facts
         prompt = estimating.build_prompt({"identifier": ident, "title": r["title"], "description": r["body"]},
                                          cfg, style=args.style, examples=examples, facts=facts)
@@ -222,6 +226,7 @@ def backtest_run(args, cfg) -> None:
         print(backtest.format_lines_error(rows))
     print()
     print(backtest.format_score("Size labels", backtest.score(rows, "label_size")))
+    print(backtest.format_risk_score("Risk from paths", backtest.risk_score(rows, "risk_paths")))
     rank = {s: i for i, s in enumerate(config.SIZES)}
     far = [r for r in rows if r.get("estimate") in rank and abs(rank[r["estimate"]] - rank[r["actual"]]) == 2]
     if far:
