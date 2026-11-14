@@ -54,7 +54,7 @@ Risk is narrow. It is one of these kinds, or none: {risk_kinds}.
 Touching an API, or having many acceptance criteria, is not risk by itself.
 If none of the kinds applies, risk_kind is null.
 
-{examples}Ticket {identifier}: {title}
+{context}Ticket {identifier}: {title}
 
 {description}
 
@@ -70,7 +70,17 @@ for this repo: a ticket like one of these is likely to be about as big.
 
 """
 
-STYLES = ("rubric", "lines", "examples")
+# The "facts" style is the lines prompt plus counts from the repo of what the
+# ticket names (flowlib/repofacts.py): a change to every use of a name used in
+# 40 files is bigger than one used in 3, and the ticket text can't show which.
+FACTS = """Counted from the repo when the ticket was filed (generated files left out), for
+each path and name the ticket mentions. Use them to judge how many places the change
+touches and how big the files it edits are; "not in the repo yet" means new code.
+{lines}
+
+"""
+
+STYLES = ("rubric", "lines", "examples", "facts")
 
 
 def format_examples(cases: list) -> str:
@@ -78,6 +88,10 @@ def format_examples(cases: list) -> str:
         return ""
     lines = "\n".join(f"- #{c['number']} {c['title']}: {c['lines']} lines, {c['files']} files" for c in cases)
     return EXAMPLES.format(lines=lines)
+
+
+def format_facts(facts: list) -> str:
+    return FACTS.format(lines="\n".join(f"- {f}" for f in facts)) if facts else ""
 
 CALIBRATE = """These tickets come from one spec. Each was sized alone. Make the sizes consistent
 across the set, using the same scale. Answer with JSON only.
@@ -95,13 +109,15 @@ with one entry per ticket above.
 
 
 def build_prompt(issue: dict, cfg: dict, limit: int = 12000, style: str = "rubric",
-                 examples: list | None = None) -> str:
-    """`examples` (backtest.cases rows) are shown only in the examples style."""
+                 examples: list | None = None, facts: list | None = None) -> str:
+    """`examples` (backtest.cases rows) are shown only in the examples style,
+    `facts` (repofacts.facts lines) only in the facts style."""
     description = (issue.get("description") or "").strip()
     if len(description) > limit:
         description = description[:limit] + "\n[truncated]"
     return (PROMPT if style == "rubric" else LINES_PROMPT).format(
-        examples=format_examples(examples or []) if style == "examples" else "",
+        context=(format_examples(examples or []) if style == "examples" else
+                 format_facts(facts or []) if style == "facts" else ""),
         rubric=RUBRIC,
         risk_kinds="; ".join(_kinds(cfg)),
         identifier=issue["identifier"],
@@ -142,7 +158,7 @@ def parse_answer(text: str, cfg: dict, style: str = "rubric") -> dict:
     kinds = {k.lower(): k for k in _kinds(cfg)}
     kind = kinds.get(str(data.get("risk_kind") or "").strip().lower())
     out = {"risk": kind is not None, "risk_kind": kind, "reason": str(data.get("reason", ""))[:300]}
-    if style in ("lines", "examples"):
+    if style != "rubric":
         try:
             lines = int(float(data.get("lines")))
         except (TypeError, ValueError):

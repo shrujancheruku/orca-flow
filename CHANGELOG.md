@@ -15,6 +15,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - `--samples N` (lines style) asks N times and takes the median line estimate, for `propose` and `backtest`. Answers are cached, so raising N asks only for the rest.
 - Proposals keep Haiku's line estimate as `haiku_lines`.
 - `--style examples` (opt-in) is the lines prompt plus the K most similar closed tickets (`--examples K`, default 5) and the lines their PRs really changed. Similarity is TF-IDF over title and body, with shared paths counting double (`flowlib/similar.py`). On 69 closed Issho tickets it was no better than the lines prompt (exact 53 against 54, though no misses by two sizes against 1), so `lines` stays the default. The tickets it still misses are sweeping changes ("for every screen"), whose size depends on how many call sites the code has, which no ticket text shows. In the backtest a ticket never sees itself; `--strict-time` also hides tickets closed after it was created.
+- `--style facts` (opt-in) is the lines prompt plus counts from the repo for each path and name the ticket mentions: a path's files and lines, a name's number of files using it, or "not in the repo yet" (`flowlib/repofacts.py`). The backtest counts the repo at the last commit before the ticket was filed. On 69 closed Issho tickets it did no better than the lines prompt (exact 51 against 54). Tuning `size_lines` on the estimates didn't help either (dev +2, test +0): Haiku's estimates for real M and L tickets overlap almost completely.
 
 ## 0.4.0 - 2026-11-12
 
