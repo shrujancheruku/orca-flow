@@ -49,6 +49,20 @@
       "items": { "type": "string" },
       "description": "The only things the estimator may call risk. A risk path also proposes risk; keywords never do."
     },
+    "generated_paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Globs (codegen, lockfiles) left out when estimate.py backtest measures a merged PR."
+    },
+    "size_lines": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "S": { "type": "integer", "minimum": 1, "default": 300 },
+        "M": { "type": "integer", "minimum": 2, "default": 1000 }
+      },
+      "description": "Upper bounds in changed lines (generated paths excluded) that make a merged PR S or M in a backtest; above M is L."
+    },
     "orchestration_doc": { "type": "string", "default": "docs/agents/orchestration.md" },
     "models": {
       "type": "object",

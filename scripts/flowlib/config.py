@@ -38,6 +38,12 @@ DEFAULTS = {
         "money: billing, spend limits or quotas",
         "secrets or credentials",
     ],
+    # Globs left out when backtest.py measures a merged PR: codegen and lockfiles
+    # are not work the agent did.
+    "generated_paths": [],
+    # Upper bounds, in changed lines, that turn a merged PR into S or M when the
+    # estimator is backtested; anything above M is L. They match the rubric.
+    "size_lines": {"S": 300, "M": 1000},
     "orchestration_doc": "docs/agents/orchestration.md",
     "models": {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"},
     "slack_prefix": "",
@@ -79,6 +85,9 @@ def check(cfg: dict) -> list:
         problems.append("labels.size needs a name for each of S, M and L")
     elif len(set(size.values())) != 3:
         problems.append("labels.size names must differ")
+    lines = cfg.get("size_lines", {})
+    if not (isinstance(lines.get("S"), int) and isinstance(lines.get("M"), int) and 0 < lines["S"] < lines["M"]):
+        problems.append("size_lines needs whole numbers with 0 < S < M")
     for key in ("risk", "integrated"):
         if not cfg.get("labels", {}).get(key):
             problems.append(f"missing labels.{key}")

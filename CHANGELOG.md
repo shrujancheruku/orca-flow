@@ -2,6 +2,15 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Features
+
+- `estimate.py backtest` scores the estimator against closed tickets. A case is a ticket closed as completed by one merged PR that closes nothing else; its actual size is the PR's changed lines with `generated_paths` left out, cut at `size_lines` (`S` 300, `M` 1000 by default, matching the rubric). It prints how often the estimator and the size labels were exact, too small or too big, with a confusion matrix and the spread of real PR sizes. Answers are cached by prompt and model, so comparing two prompts asks only about what changed.
+- `estimate.py --style lines` asks the model for the changed lines it expects (code, tests and docs, not generated files) instead of a size, and turns them into S/M/L with `size_lines`. The prompt tells it that breadth, open decisions and long acceptance criteria are not diff size. It is the new default: on 69 closed Issho tickets it got the size exactly right 78% of the time (rubric prompt: 52%) and was off by two sizes once (rubric: 6 times). `--style rubric` keeps the old prompt, and the calibration pass now runs only with it.
+- `flow.json` takes `generated_paths` and `size_lines`.
+- `Gh.read()` accepts GraphQL queries (never mutations).
+
 ## 0.4.0 - 2026-11-12
 
 ### Features

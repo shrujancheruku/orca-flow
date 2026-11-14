@@ -33,6 +33,36 @@ Ticket {identifier}: {title}
 Answer exactly: {{"size": "S|M|L", "risk_kind": "<one of the kinds>"|null, "reason": "one sentence"}}
 """
 
+# The "lines" style asks for a count instead of a size; the script turns it into
+# S/M/L with the repo's size_lines. A backtest on Issho (2026-11) showed the
+# rubric style sizing by breadth: tickets that touch many layers, or leave
+# decisions open, came back L though their PRs were a few hundred lines.
+LINES_PROMPT = """You estimate how big the pull request for one ticket will be. Answer with JSON only.
+
+Count the lines a coding agent will add plus delete: code, tests and docs, but not
+generated code or lockfiles. Estimate the diff, not the effort:
+- Breadth is not size. Touching the API, the backend, an app and the docs can still
+  be a small diff when each touch is a few lines.
+- Open questions and decisions are not size. A ticket that is mostly deciding and
+  writing down a choice is usually a small diff.
+- A long ticket with many acceptance criteria is not size by itself.
+- Most tickets are smaller than they read. A one-line fix with a test is about 20
+  lines, a new endpoint with tests is a few hundred, a new feature across packages is
+  often 1000 or more.
+
+Risk is narrow. It is one of these kinds, or none: {risk_kinds}.
+Touching an API, or having many acceptance criteria, is not risk by itself.
+If none of the kinds applies, risk_kind is null.
+
+Ticket {identifier}: {title}
+
+{description}
+
+Answer exactly: {{"lines": <number>, "files": <number>, "mostly": "code"|"decisions", "risk_kind": "<one of the kinds>"|null, "reason": "one sentence"}}
+"""
+
+STYLES = ("rubric", "lines")
+
 CALIBRATE = """These tickets come from one spec. Each was sized alone. Make the sizes consistent
 across the set, using the same scale. Answer with JSON only.
 
@@ -48,11 +78,11 @@ with one entry per ticket above.
 """
 
 
-def build_prompt(issue: dict, cfg: dict, limit: int = 12000) -> str:
+def build_prompt(issue: dict, cfg: dict, limit: int = 12000, style: str = "rubric") -> str:
     description = (issue.get("description") or "").strip()
     if len(description) > limit:
         description = description[:limit] + "\n[truncated]"
-    return PROMPT.format(
+    return (LINES_PROMPT if style == "lines" else PROMPT).format(
         rubric=RUBRIC,
         risk_kinds="; ".join(_kinds(cfg)),
         identifier=issue["identifier"],
@@ -79,13 +109,32 @@ def _size(value) -> str:
     return size
 
 
-def parse_answer(text: str, cfg: dict) -> dict:
-    """Pull the JSON answer out of the model's reply. Risk holds only for a configured kind."""
+def size_for_lines(lines: int, cfg: dict) -> str:
+    bounds = cfg["size_lines"]
+    return "S" if lines <= bounds["S"] else "M" if lines <= bounds["M"] else "L"
+
+
+def parse_answer(text: str, cfg: dict, style: str = "rubric") -> dict:
+    """Pull the JSON answer out of the model's reply. Risk holds only for a configured kind.
+
+    In the lines style the size comes from the estimated lines, cut at size_lines.
+    """
     data = _json(text)
     kinds = {k.lower(): k for k in _kinds(cfg)}
     kind = kinds.get(str(data.get("risk_kind") or "").strip().lower())
-    return {"size": _size(data.get("size")), "risk": kind is not None, "risk_kind": kind,
-            "reason": str(data.get("reason", ""))[:300]}
+    out = {"risk": kind is not None, "risk_kind": kind, "reason": str(data.get("reason", ""))[:300]}
+    if style == "lines":
+        try:
+            lines = int(float(data.get("lines")))
+        except (TypeError, ValueError):
+            raise ValueError(f"bad lines {data.get('lines')!r}") from None
+        if lines < 0:
+            raise ValueError(f"bad lines {lines}")
+        out.update(size=size_for_lines(lines, cfg), lines=lines, files=data.get("files"),
+                   mostly=data.get("mostly"))
+    else:
+        out["size"] = _size(data.get("size"))
+    return out
 
 
 def build_calibration_prompt(items: list) -> str:

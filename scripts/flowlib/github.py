@@ -24,6 +24,28 @@ READ_COMMANDS = {
 API_WRITE_FLAGS = {"-X", "--method", "-f", "-F", "--field", "--raw-field", "--input"}
 
 
+# Pages of 50: each issue carries up to 5 PRs with up to 100 files, and GitHub
+# caps the nodes one query may ask for.
+CLOSED_WITH_PRS = """query($owner: String!, $name: String!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    issues(states: CLOSED, first: 50, after: $cursor, orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title body stateReason
+        labels(first: 30) { nodes { name } }
+        closedByPullRequestsReferences(first: 5, includeClosedPrs: false) {
+          nodes {
+            number merged additions deletions changedFiles
+            closingIssuesReferences(first: 10) { totalCount }
+            files(first: 100) { nodes { path additions deletions } }
+          }
+        }
+      }
+    }
+  }
+}"""
+
+
 class GitHubError(Exception):
     pass
 
@@ -39,6 +61,12 @@ def run_gh(args: list, stdin: str | None = None) -> str:
 
 
 def is_read(args: list) -> bool:
+    if args[:2] == ["api", "graphql"]:
+        # GraphQL sends its query and variables as -f/-F fields, so the field
+        # flags don't mean a write here; a mutation, or a method override, does.
+        if {"-X", "--method", "--input"} & set(args[2:]):
+            return False
+        return not any(a.startswith("query=") and a[6:].lstrip().startswith("mutation") for a in args[2:])
     if len(args) >= 1 and args[0] == "api":
         return not (API_WRITE_FLAGS & set(args[1:]))
     return len(args) >= 2 and (args[0], args[1]) in READ_COMMANDS
@@ -98,6 +126,24 @@ class Gh:
                             "--json", "number,title,body,labels,state,assignees,milestone"])
         i["labels"] = [l["name"] for l in i["labels"]]
         return i
+
+    def closed_with_prs(self, limit: int = 1000) -> list:
+        """Closed issues with the PRs that closed them and each PR's per-file line counts.
+
+        Raw GraphQL nodes; flowlib/backtest.py picks the usable ones.
+        """
+        owner, name = self.repo.split("/")
+        nodes, cursor = [], None
+        while len(nodes) < limit:
+            args = ["api", "graphql", "-f", f"query={CLOSED_WITH_PRS}", "-f", f"owner={owner}", "-f", f"name={name}"]
+            if cursor:
+                args += ["-f", f"cursor={cursor}"]
+            page = self.read_json(args)["data"]["repository"]["issues"]
+            nodes += page["nodes"]
+            if not page["pageInfo"]["hasNextPage"]:
+                break
+            cursor = page["pageInfo"]["endCursor"]
+        return nodes[:limit]
 
     # the command lines for writes, kept pure so tests can pin them
 
