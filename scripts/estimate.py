@@ -31,7 +31,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import agents, backtest, cli, config, estimating, proposals, similar  # noqa: E402
+from flowlib import agents, backtest, cli, config, estimating, proposals, repofacts, similar  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
 
 
@@ -61,13 +61,16 @@ def propose(args, cfg) -> None:
     except agents.AgentError as exc:
         cli.die(str(exc))
     index = similar.Index(backtest.cases(gh.closed_with_prs(), cfg)) if args.style == "examples" else None
+    # run from the repo being sized: facts come from its checked-out HEAD
+    tree = repofacts.GitTree(cfg) if args.style == "facts" else None
     for issue in issues:
         if issue["number"] in done:
             continue
         ident = f"#{issue['number']}"
         examples = index.nearest(issue["title"], issue["body"] or "", k=args.examples) if index else None
+        facts = repofacts.facts(issue["body"] or "", tree) if tree else None
         prompt = estimating.build_prompt({"identifier": ident, "title": issue["title"], "description": issue["body"]},
-                                         cfg, style=args.style, examples=examples)
+                                         cfg, style=args.style, examples=examples, facts=facts)
         answers = ask_many(prof, prompt, cfg, args)
         answer = None
         if answers:
@@ -177,8 +180,13 @@ def backtest_run(args, cfg) -> None:
                     if index else None)
         if examples is not None:
             r["examples"] = [e["number"] for e in examples]
+        facts = None
+        if args.style == "facts":
+            # the repo as it was when the ticket was filed, not as its PR left it
+            facts = repofacts.facts(r["body"], repofacts.GitTree(cfg, repofacts.rev_before(r["created_at"])))
+            r["facts"] = facts
         prompt = estimating.build_prompt({"identifier": ident, "title": r["title"], "description": r["body"]},
-                                         cfg, style=args.style, examples=examples)
+                                         cfg, style=args.style, examples=examples, facts=facts)
         # Keyed by prompt and model, so a changed rubric or prompt is asked again
         # and an unchanged one is free; more --samples only asks for the rest.
         sha = hashlib.sha256(f"{args.model}\n{prompt}".encode()).hexdigest()[:16]
@@ -256,7 +264,7 @@ def main() -> None:
     p.add_argument("--strict-time", action="store_true",
                    help="backtest, examples style: show only tickets closed before the sized one was created")
     p.add_argument("--samples", type=int, default=1,
-                   help="lines and examples styles: ask this many times and take the median estimate (default 1)")
+                   help="any style but rubric: ask this many times and take the median estimate (default 1)")
     p.add_argument("--split", choices=["dev", "test", "all"], default="dev",
                    help="backtest: dev (default) is three quarters of tickets, test the fixed held-out quarter")
     p.add_argument("--closed-after", metavar="DATE",
