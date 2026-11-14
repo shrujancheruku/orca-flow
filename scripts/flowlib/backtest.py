@@ -62,6 +62,25 @@ def _mentioning_prs(node: dict, closing: int) -> list:
     return out
 
 
+def touched_risk(paths, cfg: dict) -> list:
+    """The configured risk paths a PR changed: the truth a risk guess is scored on."""
+    return sorted({pat for pat in cfg.get("risk_paths", []) for p in paths if fnmatch.fnmatch(p, pat)})
+
+
+def risk_score(rows: list, key: str) -> dict:
+    """How often a non-empty `key` (the risk reasons guessed from the ticket)
+    matched a PR that touched a risk path."""
+    caught = sum(1 for r in rows if r.get(key) and r["risk_touched"])
+    missed = sum(1 for r in rows if not r.get(key) and r["risk_touched"])
+    false = sum(1 for r in rows if r.get(key) and not r["risk_touched"])
+    return {"risky": caught + missed, "caught": caught, "missed": missed, "false": false, "n": len(rows)}
+
+
+def format_risk_score(name: str, s: dict) -> str:
+    return (f"{name}: {s['risky']} of {s['n']} PR(s) touched a risk path; caught {s['caught']}, "
+            f"missed {s['missed']}, {s['false']} false alarm(s).")
+
+
 def actual_size(lines: int, cfg: dict) -> str:
     return estimating.size_for_lines(lines, cfg)
 
@@ -81,6 +100,7 @@ def cases(nodes: list, cfg: dict) -> list:
         parts = [measure(p, cfg) for p in [pr] + extra]
         m = {k: sum(p[k] for p in parts) for k in ("lines", "files", "generated_lines", "deleted_lines")}
         m["truncated"] = any(p["truncated"] for p in parts)
+        paths = {f["path"] for p in [pr] + extra for f in (p.get("files") or {}).get("nodes") or []}
         out.append({
             "number": node["number"],
             "title": node["title"],
@@ -92,6 +112,7 @@ def cases(nodes: list, cfg: dict) -> list:
             "other_prs": [p["number"] for p in extra],
             **m,
             "actual": actual_size(m["lines"], cfg),
+            "risk_touched": touched_risk(paths, cfg),
         })
     return out
 

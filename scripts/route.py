@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, routing  # noqa: E402
+from flowlib import cli, repofacts, routing  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
 
 
@@ -52,7 +52,8 @@ def main() -> None:
         except gh_mod.GitHubError as exc:
             cli.die(str(exc))
         labels, body = issue["labels"], issue["body"] or ""
-    facts = routing.ticket_facts(cfg, labels, body, args.paths)
+    # run from the repo: short paths and code names in the ticket resolve against HEAD
+    facts = routing.ticket_facts(cfg, labels, body, args.paths, tree=repofacts.GitTree(cfg))
     size = size or facts["size"]
     risk = risk or facts["risk"]
     reasons = facts["risk_reasons"]

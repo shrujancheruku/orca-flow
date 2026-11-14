@@ -23,7 +23,7 @@ GitHub Issues is the tracker. Linear is an optional adapter ([`adapters/linear/`
 
 ## Model routing
 
-The table lives in your repo's `docs/agents/orchestration.md`; `route.py` reads it on every dispatch. Size comes from the `size:S|M|L` label. The `risk` label, or a ticket that touches a path in `risk_paths`, raises the model.
+The table lives in your repo's `docs/agents/orchestration.md`; `route.py` reads it on every dispatch. Size comes from the `size:S|M|L` label. The `risk` label, or a ticket that names a path in `risk_paths`, raises the model. A ticket names a risk path when it writes the path out, names a file under it (`identity/service.go` is enough, and a new file counts by its directory), or names code that mostly lives under it. A one-word directory like `config/**` counts only as the start of a path, so the word "config" alone doesn't. `route.py` and `estimate.py` look names up in the checked-out repo, so run them from it.
 
 | Role | Model | Effort |
 | --- | --- | --- |

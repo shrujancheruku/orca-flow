@@ -1,6 +1,6 @@
 import unittest
 
-from flowlib import estimating, repofacts
+from flowlib import backtest, estimating, repofacts, routing
 
 from .helpers import cfg
 
@@ -36,6 +36,58 @@ class RepoFactsTest(unittest.TestCase):
         self.assertIn("- `X`: used in 3 file(s)", estimating.build_prompt(issue, cfg(), style="facts",
                                                                          facts=["`X`: used in 3 file(s)"]))
         self.assertNotIn("used in", estimating.build_prompt(issue, cfg(), style="lines", facts=["`X`: used in"]))
+
+
+class RiskTree:
+    lines = {"backend/internal/identity/service.go": 100, "backend/internal/plans/handler.go": 80,
+             "backend/internal/identity/handler.go": 90, "backend/internal/chat/handler.go": 70,
+             "apps/web/wrangler.jsonc": 20}
+
+    def files_with(self, name):
+        return {"Standing": ["backend/internal/identity/service.go"],
+                "Handler": ["backend/internal/plans/handler.go", "backend/internal/chat/handler.go",
+                            "backend/internal/identity/handler.go"]}.get(name, [])
+
+
+RISK = cfg(risk_paths=["backend/internal/identity/**", "config/**", "apps/*/wrangler.jsonc"])
+
+
+class RiskPathsTest(unittest.TestCase):
+    def risk(self, text):
+        return repofacts.risk_paths(text, RiskTree(), RISK)
+
+    def test_one_word_directories_must_start_a_path(self):
+        self.assertEqual(self.risk("Read the config at startup."), [])
+        self.assertEqual(self.risk("Edit config/deploy.yml."), ["path config/**"])
+
+    def test_a_glob_needs_a_matching_path(self):
+        self.assertEqual(self.risk("Every file under apps/mobile/src."), [])
+        self.assertEqual(self.risk("Bump apps/web/wrangler.jsonc."), ["path apps/*/wrangler.jsonc"])
+
+    def test_short_paths_new_files_and_names_resolve(self):
+        self.assertEqual(self.risk("Change `identity/service.go`."),
+                         ["names identity/service.go under backend/internal/identity/**"])
+        self.assertEqual(self.risk("Add `identity/standing.go`."),
+                         ["adds identity/standing.go under backend/internal/identity/**"])
+        self.assertEqual(self.risk("Read `Standing` in the gate."),
+                         ["uses Standing under backend/internal/identity/**"])
+
+    def test_names_mostly_elsewhere_do_not_count(self):
+        self.assertEqual(self.risk("Every `Handler` and `handler.go` returns errs."), [])
+
+    def test_routing_resolves_paths_with_a_tree(self):
+        f = routing.ticket_facts(RISK, ["size:S"], "", ["identity/x.go"], tree=RiskTree())
+        self.assertTrue(f["risk"])
+        self.assertFalse(routing.ticket_facts(RISK, ["size:S"], "", ["identity/x.go"])["risk"])
+
+
+class RiskScoreTest(unittest.TestCase):
+    def test_touched_and_score(self):
+        self.assertEqual(backtest.touched_risk(["config/a.yml", "src/x.py"], RISK), ["config/**"])
+        rows = [{"risk_paths": ["p"], "risk_touched": ["config/**"]}, {"risk_paths": [], "risk_touched": ["x"]},
+                {"risk_paths": ["p"], "risk_touched": []}, {"risk_paths": [], "risk_touched": []}]
+        s = backtest.risk_score(rows, "risk_paths")
+        self.assertEqual((s["risky"], s["caught"], s["missed"], s["false"]), (2, 1, 1, 1))
 
 
 if __name__ == "__main__":

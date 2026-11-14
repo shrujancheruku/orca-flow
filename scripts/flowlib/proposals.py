@@ -15,8 +15,9 @@ def make_proposal(issue: dict, cfg: dict, answer: dict | None, hints: list) -> d
     it; a disagreement is recorded, never acted on. With no label, Haiku's size
     is the proposal.
 
-    Risk comes from the `risk` label, a configured risk path the ticket names, or
-    a risk kind Haiku named. Keyword hints are shown, never counted.
+    Risk comes from the `risk` label, a configured risk path the ticket names
+    (repofacts.risk_paths), or a risk kind Haiku named. Keyword hints ("word …")
+    are shown, never counted.
     """
     existing = config.size_from_labels(cfg, issue["labels"])
     haiku = answer["size"] if answer else None
@@ -36,7 +37,7 @@ def make_proposal(issue: dict, cfg: dict, answer: dict | None, hints: list) -> d
         "haiku_size": haiku,
         "agrees": (haiku == existing) if (existing and haiku) else None,
         "risk": (config.has_risk_label(cfg, issue["labels"]) or bool(answer and answer["risk"])
-                 or any(h.startswith("path ") for h in hints)),
+                 or any(not h.startswith("word ") for h in hints)),
         "risk_kind": answer.get("risk_kind") if answer else None,
         # The lines style's estimate, so a reviewer sees the number behind the size.
         "haiku_lines": answer.get("lines") if answer else None,
