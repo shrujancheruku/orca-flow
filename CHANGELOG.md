@@ -10,6 +10,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - `estimate.py --style lines` asks the model for the changed lines it expects (code, tests and docs, not generated files) instead of a size, and turns them into S/M/L with `size_lines`. The prompt tells it that breadth, open decisions and long acceptance criteria are not diff size. It is the new default: on 69 closed Issho tickets it got the size exactly right 78% of the time (rubric prompt: 52%) and was off by two sizes once (rubric: 6 times). `--style rubric` keeps the old prompt, and the calibration pass now runs only with it.
 - `flow.json` takes `generated_paths` and `size_lines`.
 - `Gh.read()` accepts GraphQL queries (never mutations).
+- The backtest counts every merged PR that mentioned a ticket while it was open and closes no ticket itself, so a ticket done as a series of PRs is measured whole. Deleting a whole file no longer counts its lines.
+- `estimate.py backtest --split dev|test` holds out a fixed quarter of tickets (picked by number) so prompts can be tuned on `dev` and confirmed on `test`. `--closed-after DATE` scores only tickets closed since a date.
+- `--samples N` (lines style) asks N times and takes the median line estimate, for `propose` and `backtest`. Answers are cached, so raising N asks only for the rest.
+- Proposals keep Haiku's line estimate as `haiku_lines`.
 
 ## 0.4.0 - 2026-11-12
 

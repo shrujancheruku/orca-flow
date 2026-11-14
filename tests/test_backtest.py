@@ -94,6 +94,49 @@ class LinesStyleTest(unittest.TestCase):
         self.assertIn("within 2x of actual 2 of 3", backtest.format_lines_error(rows))
 
 
+class MeasurementTest(unittest.TestCase):
+    def test_deleted_files_do_not_count(self):
+        files = [{"path": "a.py", "additions": 10, "deletions": 2, "changeType": "MODIFIED"},
+                 {"path": "old/b.py", "additions": 0, "deletions": 900, "changeType": "DELETED"}]
+        m = backtest.measure(pr(files=files), cfg())
+        self.assertEqual((m["lines"], m["files"], m["deleted_lines"]), (12, 2, 900))
+
+    def test_mentioning_prs_while_open_count_too(self):
+        def mention(number, merged_at, closes=0, merged=True):
+            return {"source": dict(pr(number=number, closes=closes, merged=merged), mergedAt=merged_at)}
+        n = node(prs=[pr(number=10)])
+        n.update(createdAt="2026-01-01", closedAt="2026-02-01", timelineItems={"nodes": [
+            mention(11, "2026-01-10"),            # counts
+            mention(11, "2026-01-10"),            # same PR twice
+            mention(12, "2026-03-01"),            # after the ticket closed
+            mention(13, "2026-01-10", closes=1),  # another ticket's PR
+            mention(14, None, merged=False),      # never merged
+            mention(10, "2026-02-01"),            # the closing PR itself
+            {},                                   # a mention from an issue
+        ]})
+        c = backtest.cases([n], cfg())[0]
+        self.assertEqual((c["other_prs"], c["lines"]), ([11], 100))
+
+    def test_split_is_fixed_and_covers_everything(self):
+        dev = {n for n in range(1, 400) if backtest.in_split(n, "dev")}
+        test = {n for n in range(1, 400) if backtest.in_split(n, "test")}
+        self.assertFalse(dev & test)
+        self.assertEqual(len(dev | test), 399)
+        self.assertTrue(60 < len(test) < 140)
+
+
+class CombineTest(unittest.TestCase):
+    def test_median_of_lines(self):
+        answers = [{"size": "S", "lines": n, "reason": f"r{n}", "risk_kind": None} for n in (100, 2000, 250)]
+        c = estimating.combine(answers, cfg())
+        self.assertEqual((c["estimate"], c["estimate_lines"], c["estimate_reason"]), ("S", 250, "r250"))
+        self.assertEqual(c["estimate_spread"], [100, 250, 2000])
+
+    def test_rubric_answers_take_the_first(self):
+        c = estimating.combine([{"size": "L", "reason": "r", "risk_kind": None}], cfg())
+        self.assertEqual(c["estimate"], "L")
+
+
 class GraphqlReadTest(unittest.TestCase):
     def test_a_query_is_a_read_and_a_mutation_is_not(self):
         self.assertTrue(github.is_read(["api", "graphql", "-f", "query=query { viewer { login } }", "-f", "x=1"]))

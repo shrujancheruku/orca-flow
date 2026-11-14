@@ -180,3 +180,21 @@ def word_hints(text: str, cfg: dict) -> list:
 def risk_hints(text: str, cfg: dict) -> list:
     """Mechanical hints: named risk paths or keywords that appear in the ticket."""
     return path_hints(text, cfg) + word_hints(text, cfg)
+
+
+def combine(answers: list, cfg: dict) -> dict:
+    """One estimate from several answers to the same prompt.
+
+    Lines style: the median line estimate, so one wild answer can't move the
+    size. Rubric style: the first answer. The reason and risk kind come from the
+    answer nearest the median.
+    """
+    with_lines = [a for a in answers if a.get("lines") is not None]
+    if not with_lines:
+        a = answers[0]
+        return {"estimate": a["size"], "estimate_reason": a["reason"], "risk_kind": a.get("risk_kind")}
+    ordered = sorted(with_lines, key=lambda a: a["lines"])
+    mid = ordered[(len(ordered) - 1) // 2]
+    lines = mid["lines"] if len(ordered) % 2 else (mid["lines"] + ordered[len(ordered) // 2]["lines"]) // 2
+    return {"estimate": size_for_lines(lines, cfg), "estimate_lines": lines, "estimate_reason": mid["reason"],
+            "risk_kind": mid.get("risk_kind"), "estimate_spread": [a["lines"] for a in ordered]}

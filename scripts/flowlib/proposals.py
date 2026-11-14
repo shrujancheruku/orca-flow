@@ -38,6 +38,8 @@ def make_proposal(issue: dict, cfg: dict, answer: dict | None, hints: list) -> d
         "risk": (config.has_risk_label(cfg, issue["labels"]) or bool(answer and answer["risk"])
                  or any(h.startswith("path ") for h in hints)),
         "risk_kind": answer.get("risk_kind") if answer else None,
+        # The lines style's estimate, so a reviewer sees the number behind the size.
+        "haiku_lines": answer.get("lines") if answer else None,
         "risk_hints": hints,
         "reason": reason,
         "approved": False,
