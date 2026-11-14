@@ -24,26 +24,29 @@ READ_COMMANDS = {
 API_WRITE_FLAGS = {"-X", "--method", "-f", "-F", "--field", "--raw-field", "--input"}
 
 
-# Pages of 50: each issue carries up to 5 PRs with up to 100 files, and GitHub
-# caps the nodes one query may ask for.
+# Pages of 25: each issue carries up to 5 closing PRs and 20 mentioning ones,
+# each with up to 100 files, and GitHub caps the nodes one query may ask for.
+PR_FIELDS = """number merged mergedAt additions deletions changedFiles
+            closingIssuesReferences(first: 10) { totalCount }
+            files(first: 100) { nodes { path additions deletions changeType } }"""
+
 CLOSED_WITH_PRS = """query($owner: String!, $name: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
-    issues(states: CLOSED, first: 50, after: $cursor, orderBy: {field: CREATED_AT, direction: DESC}) {
+    issues(states: CLOSED, first: 25, after: $cursor, orderBy: {field: CREATED_AT, direction: DESC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number title body stateReason
+        number title body stateReason createdAt closedAt
         labels(first: 30) { nodes { name } }
         closedByPullRequestsReferences(first: 5, includeClosedPrs: false) {
-          nodes {
-            number merged additions deletions changedFiles
-            closingIssuesReferences(first: 10) { totalCount }
-            files(first: 100) { nodes { path additions deletions } }
-          }
+          nodes { %s }
+        }
+        timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], first: 20) {
+          nodes { ... on CrossReferencedEvent { source { ... on PullRequest { %s } } } }
         }
       }
     }
   }
-}"""
+}""" % (PR_FIELDS, PR_FIELDS)
 
 
 class GitHubError(Exception):

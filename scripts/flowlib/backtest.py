@@ -1,13 +1,16 @@
 """Pure parts of the estimator backtest: which closed tickets count, how big their PR really was, the score.
 
 A case is a ticket closed as completed by exactly one merged PR that closes
-nothing else, so the PR's diff is that ticket's work. Its actual size is the
-PR's changed lines without `generated_paths`, cut at `size_lines`.
+nothing else. Its work is that PR plus the merged PRs that mentioned the ticket
+while it was open and close no ticket themselves: a ticket done as a series of
+PRs is closed only by the last one. Its actual size is their changed lines
+without `generated_paths` or deleted files, cut at `size_lines`.
 """
 
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 
 from . import config, estimating
 
@@ -18,19 +21,45 @@ def is_generated(path: str, cfg: dict) -> bool:
     return any(fnmatch.fnmatch(path, pattern) for pattern in cfg.get("generated_paths", []))
 
 
-def measure(pr: dict, cfg: dict) -> dict:
-    """Changed lines and files in one PR, generated paths left out.
+def _lines(f: dict) -> int:
+    return f["additions"] + f["deletions"]
 
-    GitHub lists at most 100 files per PR here; past that the unlisted files
-    count in full, since we can't tell which of them are generated.
+
+def measure(pr: dict, cfg: dict) -> dict:
+    """Changed lines and files in one PR, generated paths and deleted files left out.
+
+    Deleting a whole file is cheap for an agent however long the file was, so
+    its lines don't count; the edits that removing it forces elsewhere do. The
+    file still counts as touched. GitHub lists at most 100 files per PR here;
+    past that the unlisted files count in full, since we can't tell which of
+    them are generated or deleted.
     """
     files = (pr.get("files") or {}).get("nodes") or []
-    kept = [f for f in files if not is_generated(f["path"], cfg)]
-    dropped = sum(f["additions"] + f["deletions"] for f in files if is_generated(f["path"], cfg))
-    truncated = pr.get("changedFiles", len(files)) > len(files)
-    lines = pr["additions"] + pr["deletions"] - dropped
-    n_files = pr.get("changedFiles", len(files)) - (len(files) - len(kept))
-    return {"lines": lines, "files": n_files, "generated_lines": dropped, "truncated": truncated}
+    generated = [f for f in files if is_generated(f["path"], cfg)]
+    deleted = [f for f in files if f.get("changeType") == "DELETED" and not is_generated(f["path"], cfg)]
+    changed = pr.get("changedFiles", len(files))
+    return {
+        "lines": _lines(pr) - sum(map(_lines, generated)) - sum(map(_lines, deleted)),
+        "files": changed - len(generated),
+        "generated_lines": sum(map(_lines, generated)),
+        "deleted_lines": sum(map(_lines, deleted)),
+        "truncated": changed > len(files),
+    }
+
+
+def _mentioning_prs(node: dict, closing: int) -> list:
+    """Merged PRs that mentioned the ticket while it was open and close no ticket."""
+    out, seen = [], {closing}
+    opened, closed = node.get("createdAt") or "", node.get("closedAt") or "9999"
+    for item in (node.get("timelineItems") or {}).get("nodes") or []:
+        pr = (item or {}).get("source") or {}
+        if not pr.get("merged") or pr.get("number") in seen:
+            continue
+        if pr["closingIssuesReferences"]["totalCount"] or not (opened <= (pr.get("mergedAt") or "") <= closed):
+            continue
+        seen.add(pr["number"])
+        out.append(pr)
+    return out
 
 
 def actual_size(lines: int, cfg: dict) -> str:
@@ -48,17 +77,31 @@ def cases(nodes: list, cfg: dict) -> list:
             continue
         pr = prs[0]
         labels = [l["name"] for l in node["labels"]["nodes"]]
-        m = measure(pr, cfg)
+        extra = _mentioning_prs(node, pr["number"])
+        parts = [measure(p, cfg) for p in [pr] + extra]
+        m = {k: sum(p[k] for p in parts) for k in ("lines", "files", "generated_lines", "deleted_lines")}
+        m["truncated"] = any(p["truncated"] for p in parts)
         out.append({
             "number": node["number"],
             "title": node["title"],
             "body": node.get("body") or "",
+            "closed_at": node.get("closedAt"),
             "label_size": config.size_from_labels(cfg, labels),
             "pr": pr["number"],
+            "other_prs": [p["number"] for p in extra],
             **m,
             "actual": actual_size(m["lines"], cfg),
         })
     return out
+
+
+def in_split(number: int, split: str) -> bool:
+    """A fixed quarter of tickets is held out as `test`, picked by number so it
+    never moves. Tune prompts on `dev` and look at `test` only to confirm."""
+    if split == "all":
+        return True
+    held_out = hashlib.sha256(str(number).encode()).digest()[0] % 4 == 0
+    return held_out if split == "test" else not held_out
 
 
 def score(rows: list, key: str) -> dict:

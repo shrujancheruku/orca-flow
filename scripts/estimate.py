@@ -66,11 +66,12 @@ def propose(args, cfg) -> None:
         ident = f"#{issue['number']}"
         prompt = estimating.build_prompt({"identifier": ident, "title": issue["title"], "description": issue["body"]},
                                          cfg, style=args.style)
+        answers = ask_many(prof, prompt, cfg, args)
         answer = None
-        try:
-            answer = estimating.parse_answer(agents.ask(prof, prompt, args.timeout), cfg, style=args.style)
-        except (agents.AgentError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
-            print(f"  {ident}: no answer ({exc})")
+        if answers:
+            c = estimating.combine(answers, cfg)
+            answer = dict(answers[0], size=c["estimate"], reason=c["estimate_reason"], lines=c.get("estimate_lines"),
+                          risk_kind=c["risk_kind"], risk=c["risk_kind"] is not None)
         hints = estimating.risk_hints(f"{issue['title']}\n{issue['body'] or ''}", cfg)
         try:
             item = proposals.make_proposal(issue, cfg, answer, hints)
@@ -129,9 +130,24 @@ def apply(args, cfg) -> None:
         print(f"Edited {len(gh.done)} issue(s).")
 
 
+def ask_many(prof, prompt: str, cfg: dict, args, have: list | None = None) -> list:
+    """Answers to one prompt, topped up to --samples. A failed call is skipped."""
+    answers = list(have or [])
+    while len(answers) < args.samples:
+        try:
+            answers.append(estimating.parse_answer(agents.ask(prof, prompt, args.timeout), cfg, style=args.style))
+        except (agents.AgentError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+            print(f"  no answer ({exc})")
+            break
+    return answers
+
+
 def backtest_run(args, cfg) -> None:
     gh = gh_mod.Gh(cfg["github_repo"])
     rows = backtest.cases(gh.closed_with_prs(), cfg)
+    rows = [r for r in rows if backtest.in_split(r["number"], args.split)]
+    if args.closed_after:
+        rows = [r for r in rows if (r["closed_at"] or "") >= args.closed_after]
     if args.only:
         wanted = {gh_mod.ticket_number(n) for n in args.only}
         rows = [r for r in rows if r["number"] in wanted]
@@ -141,7 +157,7 @@ def backtest_run(args, cfg) -> None:
     if os.path.exists(out):
         with open(out) as fh:
             cache = {r["number"]: r for r in json.load(fh).get("cases", [])}
-    print(f"{len(rows)} closed ticket(s) with one merged PR each. GitHub is not changed.")
+    print(f"{len(rows)} closed ticket(s) ({args.split} split). GitHub is not changed.")
     prof = None
     if args.model_calls:
         try:
@@ -153,33 +169,36 @@ def backtest_run(args, cfg) -> None:
         prompt = estimating.build_prompt({"identifier": ident, "title": r["title"], "description": r["body"]},
                                          cfg, style=args.style)
         # Keyed by prompt and model, so a changed rubric or prompt is asked again
-        # and an unchanged one is free.
+        # and an unchanged one is free; more --samples only asks for the rest.
         sha = hashlib.sha256(f"{args.model}\n{prompt}".encode()).hexdigest()[:16]
         old = cache.get(r["number"], {})
-        if old.get("prompt_sha") == sha and old.get("estimate") in config.SIZES:
-            r.update({k: old[k] for k in ("estimate", "estimate_reason", "estimate_lines", "prompt_sha") if k in old})
-            if r.get("estimate_lines") is not None:
-                # size_lines may have changed since the answer was cached
-                r["estimate"] = estimating.size_for_lines(r["estimate_lines"], cfg)
-        elif prof:
-            try:
-                answer = estimating.parse_answer(agents.ask(prof, prompt, args.timeout), cfg, style=args.style)
-            except (agents.AgentError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
-                print(f"  {ident}: no answer ({exc})")
-            else:
-                r.update(estimate=answer["size"], estimate_reason=answer["reason"], prompt_sha=sha)
-                said = answer["size"]
-                if "lines" in answer:
-                    r["estimate_lines"] = answer["lines"]
-                    said += f" ({answer['lines']} lines)"
+        answers = old.get("answers", []) if old.get("prompt_sha") == sha else []
+        if not answers and old.get("prompt_sha") == sha and old.get("estimate") in config.SIZES:
+            # a file from before --samples kept one answer, flat on the case
+            answers = [{"size": old["estimate"], "lines": old.get("estimate_lines"),
+                        "reason": old.get("estimate_reason", ""), "risk_kind": None}]
+        if prof and len(answers) < args.samples:
+            answers = ask_many(prof, prompt, cfg, args, answers)
+            fresh = True
+        else:
+            fresh = False
+        answers = answers[: args.samples]
+        if answers:
+            # Cached answers are cut again, since size_lines may have changed.
+            r.update(estimating.combine(answers, cfg), answers=answers, prompt_sha=sha)
+            if fresh:
+                said = r["estimate"] + (f" ({r['estimate_lines']} lines)" if r.get("estimate_lines") is not None else "")
                 print(f"  {ident}: said {said}, was {r['actual']} ({r['lines']} lines)")
         cache[r["number"]] = r
-        save_backtest(out, cfg, args.model, args.style, rows)
-    save_backtest(out, cfg, args.model, args.style, rows)
+        save_backtest(out, cfg, args.model, args.style, list(cache.values()))
     print()
     print(backtest.distribution(rows))
+    multi = sum(1 for r in rows if r["other_prs"])
+    if multi:
+        print(f"{multi} ticket(s) were done over more than one PR; their other PRs count too.")
     print()
-    print(backtest.format_score(f"Estimator ({args.model}, {args.style} prompt)", backtest.score(rows, "estimate")))
+    print(backtest.format_score(f"Estimator ({args.model}, {args.style} prompt, {args.samples} sample(s))",
+                                backtest.score(rows, "estimate")))
     if any(r.get("estimate_lines") is not None for r in rows):
         print(backtest.format_lines_error(rows))
     print()
@@ -221,9 +240,17 @@ def main() -> None:
     p.add_argument("--style", choices=estimating.STYLES, default="lines",
                    help="lines (default): the model estimates changed lines and size_lines turns them into "
                         "S/M/L. rubric: it picks S/M/L from the rubric")
+    p.add_argument("--samples", type=int, default=1,
+                   help="lines style: ask this many times and take the median estimate (default 1)")
+    p.add_argument("--split", choices=["dev", "test", "all"], default="dev",
+                   help="backtest: dev (default) is three quarters of tickets, test the fixed held-out quarter")
+    p.add_argument("--closed-after", metavar="DATE",
+                   help="backtest: only tickets closed on or after this date (YYYY-MM-DD)")
     p.add_argument("--no-model", dest="model_calls", action="store_false",
                    help="backtest: ask no model; score the labels and any cached answers")
     args = p.parse_args()
+    if args.samples < 1 or (args.samples > 1 and args.style != "lines"):
+        cli.die("--samples needs a whole number of at least 1, and more than 1 only with --style lines")
     args.out = args.out or (f"estimate-backtest-{args.style}.json" if args.command == "backtest" else "estimate-proposals.json")
     cfg = cli.load(args)
     try:
