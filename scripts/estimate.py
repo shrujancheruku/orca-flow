@@ -31,7 +31,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import agents, backtest, cli, config, estimating, proposals  # noqa: E402
+from flowlib import agents, backtest, cli, config, estimating, proposals, similar  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
 
 
@@ -60,12 +60,14 @@ def propose(args, cfg) -> None:
         prof = agents.profile(args.model, cfg["models"])
     except agents.AgentError as exc:
         cli.die(str(exc))
+    index = similar.Index(backtest.cases(gh.closed_with_prs(), cfg)) if args.style == "examples" else None
     for issue in issues:
         if issue["number"] in done:
             continue
         ident = f"#{issue['number']}"
+        examples = index.nearest(issue["title"], issue["body"] or "", k=args.examples) if index else None
         prompt = estimating.build_prompt({"identifier": ident, "title": issue["title"], "description": issue["body"]},
-                                         cfg, style=args.style)
+                                         cfg, style=args.style, examples=examples)
         answers = ask_many(prof, prompt, cfg, args)
         answer = None
         if answers:
@@ -144,8 +146,13 @@ def ask_many(prof, prompt: str, cfg: dict, args, have: list | None = None) -> li
 
 def backtest_run(args, cfg) -> None:
     gh = gh_mod.Gh(cfg["github_repo"])
-    rows = backtest.cases(gh.closed_with_prs(), cfg)
-    rows = [r for r in rows if backtest.in_split(r["number"], args.split)]
+    every = backtest.cases(gh.closed_with_prs(), cfg)
+    # Examples come from every split: they are data the model reads, not what
+    # the prompt is tuned on. The ticket itself is never its own example; with
+    # --strict-time only tickets closed before it was created are, which leaves
+    # a young repo (whose tickets were filed in batches) with few examples.
+    index = similar.Index(every) if args.style == "examples" else None
+    rows = [r for r in every if backtest.in_split(r["number"], args.split)]
     if args.closed_after:
         rows = [r for r in rows if (r["closed_at"] or "") >= args.closed_after]
     if args.only:
@@ -166,8 +173,12 @@ def backtest_run(args, cfg) -> None:
             cli.die(str(exc))
     for r in rows:
         ident = f"#{r['number']}"
+        examples = (index.nearest(r["title"], r["body"], k=args.examples, before=r["created_at"] if args.strict_time else None, exclude=r["number"])
+                    if index else None)
+        if examples is not None:
+            r["examples"] = [e["number"] for e in examples]
         prompt = estimating.build_prompt({"identifier": ident, "title": r["title"], "description": r["body"]},
-                                         cfg, style=args.style)
+                                         cfg, style=args.style, examples=examples)
         # Keyed by prompt and model, so a changed rubric or prompt is asked again
         # and an unchanged one is free; more --samples only asks for the rest.
         sha = hashlib.sha256(f"{args.model}\n{prompt}".encode()).hexdigest()[:16]
@@ -240,8 +251,12 @@ def main() -> None:
     p.add_argument("--style", choices=estimating.STYLES, default="lines",
                    help="lines (default): the model estimates changed lines and size_lines turns them into "
                         "S/M/L. rubric: it picks S/M/L from the rubric")
+    p.add_argument("--examples", type=int, default=5, metavar="K",
+                   help="examples style: how many similar closed tickets to show (default 5)")
+    p.add_argument("--strict-time", action="store_true",
+                   help="backtest, examples style: show only tickets closed before the sized one was created")
     p.add_argument("--samples", type=int, default=1,
-                   help="lines style: ask this many times and take the median estimate (default 1)")
+                   help="lines and examples styles: ask this many times and take the median estimate (default 1)")
     p.add_argument("--split", choices=["dev", "test", "all"], default="dev",
                    help="backtest: dev (default) is three quarters of tickets, test the fixed held-out quarter")
     p.add_argument("--closed-after", metavar="DATE",
@@ -249,8 +264,8 @@ def main() -> None:
     p.add_argument("--no-model", dest="model_calls", action="store_false",
                    help="backtest: ask no model; score the labels and any cached answers")
     args = p.parse_args()
-    if args.samples < 1 or (args.samples > 1 and args.style != "lines"):
-        cli.die("--samples needs a whole number of at least 1, and more than 1 only with --style lines")
+    if args.samples < 1 or (args.samples > 1 and args.style == "rubric"):
+        cli.die("--samples needs a whole number of at least 1, and more than 1 not with --style rubric")
     args.out = args.out or (f"estimate-backtest-{args.style}.json" if args.command == "backtest" else "estimate-proposals.json")
     cfg = cli.load(args)
     try:

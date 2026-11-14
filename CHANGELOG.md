@@ -14,6 +14,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - `estimate.py backtest --split dev|test` holds out a fixed quarter of tickets (picked by number) so prompts can be tuned on `dev` and confirmed on `test`. `--closed-after DATE` scores only tickets closed since a date.
 - `--samples N` (lines style) asks N times and takes the median line estimate, for `propose` and `backtest`. Answers are cached, so raising N asks only for the rest.
 - Proposals keep Haiku's line estimate as `haiku_lines`.
+- `--style examples` (opt-in) is the lines prompt plus the K most similar closed tickets (`--examples K`, default 5) and the lines their PRs really changed. Similarity is TF-IDF over title and body, with shared paths counting double (`flowlib/similar.py`). On 69 closed Issho tickets it was no better than the lines prompt (exact 53 against 54, though no misses by two sizes against 1), so `lines` stays the default. The tickets it still misses are sweeping changes ("for every screen"), whose size depends on how many call sites the code has, which no ticket text shows. In the backtest a ticket never sees itself; `--strict-time` also hides tickets closed after it was created.
 
 ## 0.4.0 - 2026-11-12
 

@@ -54,14 +54,30 @@ Risk is narrow. It is one of these kinds, or none: {risk_kinds}.
 Touching an API, or having many acceptance criteria, is not risk by itself.
 If none of the kinds applies, risk_kind is null.
 
-Ticket {identifier}: {title}
+{examples}Ticket {identifier}: {title}
 
 {description}
 
 Answer exactly: {{"lines": <number>, "files": <number>, "mostly": "code"|"decisions", "risk_kind": "<one of the kinds>"|null, "reason": "one sentence"}}
 """
 
-STYLES = ("rubric", "lines")
+# The "examples" style is the lines prompt plus similar closed tickets and the
+# lines their PRs really changed, so the model has this repo's scale.
+EXAMPLES = """Closed tickets from this repo that read most like this one, and the lines their
+PRs really changed (generated and deleted files left out). Use them as the scale
+for this repo: a ticket like one of these is likely to be about as big.
+{lines}
+
+"""
+
+STYLES = ("rubric", "lines", "examples")
+
+
+def format_examples(cases: list) -> str:
+    if not cases:
+        return ""
+    lines = "\n".join(f"- #{c['number']} {c['title']}: {c['lines']} lines, {c['files']} files" for c in cases)
+    return EXAMPLES.format(lines=lines)
 
 CALIBRATE = """These tickets come from one spec. Each was sized alone. Make the sizes consistent
 across the set, using the same scale. Answer with JSON only.
@@ -78,11 +94,14 @@ with one entry per ticket above.
 """
 
 
-def build_prompt(issue: dict, cfg: dict, limit: int = 12000, style: str = "rubric") -> str:
+def build_prompt(issue: dict, cfg: dict, limit: int = 12000, style: str = "rubric",
+                 examples: list | None = None) -> str:
+    """`examples` (backtest.cases rows) are shown only in the examples style."""
     description = (issue.get("description") or "").strip()
     if len(description) > limit:
         description = description[:limit] + "\n[truncated]"
-    return (LINES_PROMPT if style == "lines" else PROMPT).format(
+    return (PROMPT if style == "rubric" else LINES_PROMPT).format(
+        examples=format_examples(examples or []) if style == "examples" else "",
         rubric=RUBRIC,
         risk_kinds="; ".join(_kinds(cfg)),
         identifier=issue["identifier"],
@@ -123,7 +142,7 @@ def parse_answer(text: str, cfg: dict, style: str = "rubric") -> dict:
     kinds = {k.lower(): k for k in _kinds(cfg)}
     kind = kinds.get(str(data.get("risk_kind") or "").strip().lower())
     out = {"risk": kind is not None, "risk_kind": kind, "reason": str(data.get("reason", ""))[:300]}
-    if style == "lines":
+    if style in ("lines", "examples"):
         try:
             lines = int(float(data.get("lines")))
         except (TypeError, ValueError):
