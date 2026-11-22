@@ -20,4 +20,6 @@ Read Matt Pocock's `implement-spec` `SKILL.md` (in the `mattpocock-skills` plugi
 - **Merging to main.** The founder merges the integration PR. Merge it yourself only when the founder turned automerge on for this run.
 - **Stops, holds, escalation and usage limits** follow `docs/agents/orchestration.md`.
 
+- **Cleanup.** Once the integration PR is merged, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.py --run <run id>` from the repo, read what it would remove and what it keeps and why, then run it with `--apply`. Never remove a run's worktrees with `orca worktree rm`: it hangs and leaves each checkout behind. The script removes them with `git worktree remove`, never forces, and keeps any worktree with uncommitted files or a HEAD on no remote branch. Branches stay.
+
 When the milestone's last ticket is `integrated` and the integration review is fixed, run the profiler as `docs/agents/orchestration.md` says (`profile.py ... --pr <integration PR> --apply` comments the summary on the integration PR), and report the PR link and the profile summary.
