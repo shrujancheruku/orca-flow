@@ -14,25 +14,9 @@ How a spec gets built here. `/flow:build` follows this file. Tickets are GitHub 
 
 ## Model routing
 
-Before every worker, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role> --ticket <n> --lookup` and pass the `flags` (`--agent`, `--model`, `--effort`) and `task_title` it prints. Read the row from this table each time; never route from memory. The Model column names a profile in `models` in `docs/agents/flow.json`, which says which Orca agent and model id it runs on. Always pass `--model`: the user's own settings default to Opus.
+Before every worker, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role> --ticket <n> --lookup` and pass the `flags` (`--agent`, `--model`, `--effort`) and `task_title` it prints. Never route from memory: the script decides, and the table below is a copy of what it uses. The Model column names a profile in `models` in `docs/agents/flow.json`, which says which Orca agent and model id it runs on. Always pass `--model`: the user's own settings default to Opus.
 
-| Key | Role | Model | Effort | Notes |
-|---|---|---|---|---|
-| coordinator | Coordinator | opus | medium | The session running `/flow:build`. |
-| scout | Exploration or scout | haiku | low | A subagent inside a worker. |
-| build.S | Implementer, size S, no `risk` | haiku | | Escalates once; see Escalation. |
-| build.S.risk | Implementer, size S, `risk` | sonnet | medium | |
-| build.M | Implementer, size M | sonnet | medium | |
-| build.M.risk | Implementer, size M, `risk` | sonnet | high | |
-| build.L | Implementer, size L | sonnet | high | |
-| build.L.risk | Implementer, size L, `risk` | opus | | |
-| build.escalated | Implementer after an escalation | sonnet | medium | A fresh worker on the same branch. |
-| merge | Merger | haiku | low | |
-| merge.conflict | Merger on a real conflict | sonnet | medium | |
-| check | Spec check before a ticket merges into the integration branch | haiku | low | One per ticket. |
-| review | Integration `code-review`, once per milestone | opus | | |
-| review.risk | Integration `code-review`, milestone has `risk` tickets | opus | | Same as `review`; kept so `--risk` resolves. |
-| fix | Fixer for the integration review's findings | opus | | |
+{{ROUTING_TABLE}}
 
 Size comes from the issue's `{{SIZE_S}}`, `{{SIZE_M}}` or `{{SIZE_L}}` label. The `{{RISK_LABEL}}` label, or a ticket that names a path in `risk_paths` in `docs/agents/flow.json`, raises the model to the `.risk` row. A ticket with no size label routes as M and `route.py` warns; run `estimate.py propose` for the founder to approve sizes.
 
