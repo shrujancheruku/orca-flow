@@ -21,7 +21,7 @@ Writes to GitHub are the founder's call. Show each dry run, say what `--apply` w
 
 3. **Labels.** `setup_labels.py` shows which of `size:S`, `size:M`, `size:L`, `risk` and `integrated` are missing; after a yes, `setup_labels.py --apply`. It also checks Matt's five triage labels and reports any that are missing. It creates none of them: if some are missing, tell the founder to rerun `/setup-matt-pocock-skills`.
 
-4. **Docs.** `seed_docs.py` adds an "Orca and milestones" section to `docs/agents/issue-tracker.md` and a "Flow labels" section to `docs/agents/triage-labels.md`, writes `docs/agents/orchestration.md` if it is not there, and adds an Orchestration block to `CLAUDE.md`. Matt's own text is not touched. Read the routing table in `orchestration.md` with the founder; it is theirs to tune.
+4. **Docs.** `seed_docs.py` adds an "Orca and milestones" section to `docs/agents/issue-tracker.md` and a "Flow labels" section to `docs/agents/triage-labels.md`, writes `docs/agents/orchestration.md` if it is not there, and adds an Orchestration block to `CLAUDE.md`. Matt's own text is not touched. Read the routing table in `orchestration.md` with the founder. The table is the plugin's defaults and follows its releases; a row they want different goes under `routing` in `docs/agents/flow.json`, then `seed_docs.py --apply` again.
 
 5. **Sizes.** `estimate.py propose` asks Haiku about each open issue (an existing `size:` label is kept as the proposal and double-checked) and writes `estimate-proposals.json`. The founder sets `"approved": true` on the ones they accept, changing `"size"` first where they disagree. Then `estimate.py apply`, and with their yes `estimate.py apply --apply`.
 

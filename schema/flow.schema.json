@@ -82,6 +82,21 @@
         ]
       }
     },
+    "routing": {
+      "type": "object",
+      "description": "Routing rows this repo sets itself, by row key (fix, build.M, merge.conflict, ...). Every row not named here is the plugin's default and changes with its releases.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["model"],
+        "additionalProperties": false,
+        "properties": {
+          "model": { "type": "string", "description": "A name in `models`." },
+          "effort": { "type": ["string", "null"], "description": "low, medium, high, or null to pass no --effort." },
+          "role": { "type": "string", "description": "The Role cell, for a row the plugin does not ship." },
+          "notes": { "type": "string" }
+        }
+      }
+    },
     "slack_prefix": { "type": "string", "description": "Channels are #<prefix>-prs and #<prefix>-needs-you." }
   }
 }

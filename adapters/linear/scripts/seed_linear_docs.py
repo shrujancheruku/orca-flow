@@ -3,28 +3,38 @@
 
   docs/agents/issue-tracker.md   from templates/issue-tracker-linear.md
   docs/agents/triage-labels.md   from templates/triage-labels-linear.md
-  docs/agents/orchestration.md   from templates/orchestration.md (kept if present, unless --force)
+  docs/agents/orchestration.md   from templates/orchestration.md; once present, only its
+                                 routing table is rewritten (--force replaces the file)
   CLAUDE.md                      the "## Agent skills" section, replaced in place
 
 The repo's own "### Domain docs" text is kept. Dry run by default: prints a
 diff summary. --apply writes. Rerunning with no config change writes nothing.
+
+Run it again after every plugin release: the routing table follows the
+plugin's defaults except for the rows `routing` sets in the config. A table
+kept by hand from before the plugin owned it is handed over on the first run,
+and the rows it had changed move to `routing`.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts"))
 
+from flowlib import routing, seeding  # noqa: E402
 from linearlib.config import initiative_name  # noqa: E402
 from linearlib import cli, config as config_mod  # noqa: E402
 
 ADAPTER = Path(__file__).resolve().parent.parent
 PLUGIN = ADAPTER.parent.parent
 TEMPLATES = ADAPTER / "templates"
+SIZE_WORD = "Estimate"
 
 
 def values(cfg: dict) -> dict:
@@ -36,6 +46,7 @@ def values(cfg: dict) -> dict:
         "ADAPTER_SCRIPTS": str(ADAPTER / "scripts"),
         "SLACK_PREFIX": cfg.get("slack_prefix") or "<prefix>",
         "LINEAR_TEAM_URL": f"{config_mod.linear_base_url(cfg)}/team/{cfg['team']['key']}/triage",
+        "ROUTING_TABLE": seeding.wrap(routing.BLOCK, routing.render(routing.effective(cfg.get("routing"), SIZE_WORD))),
     }
 
 
@@ -72,6 +83,32 @@ def merge_claude_md(current: str, block: str) -> str:
     return current.rstrip() + "\n\n" + block.rstrip() + "\n"
 
 
+def routing_plan(orch: Path, cfg: dict) -> list:
+    """Plans for an existing orchestration doc: its routing table, and the config when rows move into it."""
+    old = orch.read_text()
+    overrides = dict(cfg.get("routing") or {})
+    moved = {}
+    if routing.block_text(old) is None:
+        try:
+            moved = {k: v for k, v in routing.legacy_overrides(routing.parse_table(old)).items()
+                     if k.lower() not in {o.lower() for o in overrides}}
+        except routing.RoutingError:
+            moved = {}
+        overrides.update(moved)
+    new = routing.place_block(old, routing.effective(overrides, SIZE_WORD))
+    what = ("up to date" if new == old else
+            "update the routing table" if routing.block_text(old) is not None else
+            "hand the routing table to the plugin (the rest stays the repo's own)")
+    plans = [(orch, new if new != old else None, what)]
+    if moved and cfg.get("_path"):
+        path = Path(cfg["_path"])
+        raw = json.loads(path.read_text())
+        raw["routing"] = dict(raw.get("routing") or {}, **moved)
+        plans.append((path, json.dumps(raw, indent=2) + "\n",
+                      "add routing: the rows the table had set (" + ", ".join(sorted(moved)) + ")"))
+    return plans
+
+
 def main() -> None:
     p = cli.parser(__doc__)
     p.add_argument("--root", default=".", help="repo root (default: here)")
@@ -91,7 +128,7 @@ def main() -> None:
         target = root / dst
         new = render((TEMPLATES / src).read_text(), vals)
         if target.exists() and keep:
-            plans.append((target, None, "kept (the repo's own; --force to replace)"))
+            plans += routing_plan(target, cfg)
             continue
         old = target.read_text() if target.exists() else None
         plans.append((target, new if new != old else None, "up to date" if new == old else ("update" if old else "create")))
@@ -103,7 +140,8 @@ def main() -> None:
     plans.append((claude, merged if merged != current else None, "update Agent skills" if merged != current else "up to date"))
 
     for target, content, what in plans:
-        print(f"  {target.relative_to(root)}: {what}")
+        shown = target.relative_to(root) if target.is_relative_to(root) else target
+        print(f"  {shown}: {what}")
         if content is not None and args.apply:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content)

@@ -1,18 +1,13 @@
-import os
 import unittest
 
 from flowlib import routing
 
 from . import helpers
 
-DOC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "orchestration.md")
-
-
 class RoutingTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        with open(DOC) as fh:
-            cls.table = routing.parse_table(fh.read())
+        cls.table = routing.effective()
 
     def pick(self, role, **kw):
         c = routing.select(self.table, role, **kw)
@@ -34,7 +29,8 @@ class RoutingTest(unittest.TestCase):
         self.assertEqual(self.pick("build", variant="escalated")[0], "sonnet")
 
     def test_the_whole_table_is_pinned(self):
-        """The routing table is the policy. Changing a row means changing this test on purpose."""
+        """The defaults are the policy. Changing a row means changing this test on purpose,
+        and adding the old value to PAST_DEFAULTS so hand-kept tables follow."""
         got = {k: (v["model"], v["effort"]) for k, v in self.table.items()}
         self.assertEqual(got, {
             "coordinator": ("opus", "medium"), "scout": ("haiku", "low"),
@@ -107,6 +103,105 @@ class RoutingTest(unittest.TestCase):
         )
         self.assertEqual(routing.select(table, "build", size="S")["model"], "haiku")
         self.assertEqual(routing.select(table, "build", size="L", risk=True)["model"], "sonnet")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+OLD_TABLE = """# Orchestration
+
+## Model routing
+
+Mine, above.
+
+| Key | Role | Model | Effort | Notes |
+|---|---|---|---|---|
+| build.S | Implementer, size S | haiku | | |
+| build.M | Implementer, size M | opus | | tuned here |
+| review | Integration review | sonnet | high | |
+| review.risk | Integration review, risk | opus | | |
+| fix | Fixer | sonnet | medium | |
+| build.spike | A spike | haiku | low | ours |
+
+Mine, below.
+
+## Escalation
+
+Stays.
+"""
+
+
+class DefaultsFollowReleasesTest(unittest.TestCase):
+    def pick(self, table, role, **kw):
+        c = routing.select(table, role, **kw)
+        return c["model"], c["effort"]
+
+    def test_a_row_set_in_the_config_wins_and_the_rest_are_defaults(self):
+        table = routing.effective({"fix": {"model": "Sonnet", "effort": "medium"}})
+        self.assertEqual(self.pick(table, "fix"), ("sonnet", "medium"))
+        self.assertTrue(table["fix"]["set"])
+        self.assertEqual(self.pick(table, "review"), ("opus", None))
+        self.assertIn("Set in `flow.json`.", routing.render(table))
+
+    def test_a_config_can_add_a_variant_row(self):
+        table = routing.effective({"build.spike": {"model": "haiku", "effort": None, "role": "A spike"}})
+        self.assertEqual(self.pick(table, "build", variant="spike"), ("haiku", None))
+        self.assertIn("| build.spike | A spike | haiku |", routing.render(table))
+
+    def test_bad_overrides_are_named(self):
+        self.assertEqual(routing.check_overrides({"fix": {"model": "opus"}}), [])
+        self.assertIn("routing.fix needs a model", routing.check_overrides({"fix": {"effort": "low"}}))
+        self.assertTrue(routing.check_overrides({"deploy": {"model": "opus"}}))
+        self.assertTrue(routing.check_overrides(["fix"]))
+
+    def test_a_hand_kept_table_keeps_only_the_rows_the_repo_changed(self):
+        """review and fix hold what 0.5.0 shipped, so they are not the repo's choice; build.M and build.spike are."""
+        got = routing.legacy_overrides(routing.parse_table(OLD_TABLE))
+        self.assertEqual(got, {
+            "build.M": {"model": "opus", "effort": None},
+            "build.spike": {"model": "haiku", "effort": "low", "role": "A spike", "notes": "ours"},
+        })
+
+    def test_routing_from_a_hand_kept_doc_takes_new_defaults_and_keeps_the_repos_rows(self):
+        table, warnings = routing.resolve({}, OLD_TABLE)
+        self.assertEqual(self.pick(table, "fix"), ("opus", None))
+        self.assertEqual(self.pick(table, "review"), ("opus", None))
+        self.assertEqual(self.pick(table, "build", size="M"), ("opus", None))
+        self.assertEqual(self.pick(table, "build", variant="spike"), ("haiku", "low"))
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("seed_docs.py --apply", warnings[0])
+        self.assertIn("build.M", warnings[0])
+
+    def test_the_config_beats_a_hand_kept_row(self):
+        table, _ = routing.resolve({"build.m": {"model": "sonnet", "effort": "high"}}, OLD_TABLE)
+        self.assertEqual(self.pick(table, "build", size="M"), ("sonnet", "high"))
+
+    def test_handing_the_table_over_touches_only_the_table(self):
+        table, _ = routing.resolve({}, OLD_TABLE)
+        out = routing.place_block(OLD_TABLE, table)
+        self.assertIn("Mine, above.\n\n<!-- flow:begin routing -->", out)
+        self.assertIn("<!-- flow:end routing -->\n\nMine, below.\n\n## Escalation\n\nStays.\n", out)
+        self.assertNotIn("| fix | Fixer | sonnet |", out)
+        self.assertEqual(routing.place_block(out, table), out)
+        again, warnings = routing.resolve({"build.M": {"model": "opus"}, "build.spike": {"model": "haiku", "effort": "low", "role": "A spike", "notes": "ours"}}, out)
+        self.assertEqual(warnings, [])
+
+    def test_a_stale_copy_is_reported_and_a_fresh_one_is_not(self):
+        fresh = routing.place_block("# Doc\n", routing.effective())
+        self.assertEqual(routing.resolve({}, fresh)[1], [])
+        stale = fresh.replace("| fix | Fixer for the integration review's findings | opus |", "| fix | Fixer | sonnet |")
+        table, warnings = routing.resolve({}, stale)
+        self.assertEqual(self.pick(table, "fix"), ("opus", None))
+        self.assertIn("out of date", warnings[0])
+        self.assertIn("out of date", routing.resolve({"fix": {"model": "sonnet"}}, fresh)[1][0])
+
+    def test_no_doc_is_fine(self):
+        table, warnings = routing.resolve({}, None)
+        self.assertEqual((self.pick(table, "merge"), warnings), (("haiku", "low"), []))
+
+    def test_linear_reads_estimate(self):
+        self.assertIn("Implementer, Estimate S, no `risk`", routing.render(routing.effective(None, "Estimate")))
 
 
 if __name__ == "__main__":

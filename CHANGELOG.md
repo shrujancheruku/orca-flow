@@ -2,6 +2,15 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Features
+
+- The routing table's defaults live in the plugin (`flowlib/routing.py`), not in each repo's `docs/agents/orchestration.md`. `route.py` and `route_linear.py` route from the defaults with the repo's own rows laid over them, so a release that changes a default changes it in every repo that has not set that row. Before, a repo kept whatever table it was seeded with.
+- `flow.json` takes `routing`: the rows a repo sets itself, by key (`"routing": {"fix": {"model": "sonnet", "effort": "medium"}}`). A key the plugin does not ship adds a variant row.
+- The table in `orchestration.md` is a copy the plugin writes between `<!-- flow:begin routing -->` markers, with the rows set in the config marked. `seed_docs.py --apply` (and `seed_linear_docs.py`) rewrites it and leaves the rest of the file alone; `/flow:build` runs it at the start of a build, and the route scripts warn when the copy is out of date.
+- A table kept by hand is handed over on the first run. A row counts as the repo's own, and moves to `routing`, when it differs from every default the plugin has shipped for that key (`PAST_DEFAULTS`); a row still holding an old default follows the new one. Until the hand-over, the route scripts already route this way and say so.
+
 ## 0.6.0 - 2026-11-22
 
 ### Features

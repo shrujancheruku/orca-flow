@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 
 DEFAULT_PATH = "docs/agents/linear.json"
-SHARED_KEYS = ("github_repo", "risk_paths", "slack_prefix", "models", "orchestration_doc")
+SHARED_KEYS = ("github_repo", "risk_paths", "slack_prefix", "models", "routing", "orchestration_doc")
 
 DEFAULTS = {
     "states": {
@@ -58,6 +58,8 @@ DEFAULTS = {
     "mapping_file": "docs/agents/linear-mapping.json",
     "orchestration_doc": "docs/agents/orchestration.md",
     "models": {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"},
+    # Routing rows this repo sets itself; every other row is the plugin's default.
+    "routing": {},
     "slack_prefix": "",
 }
 

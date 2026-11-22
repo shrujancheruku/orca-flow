@@ -2,8 +2,10 @@
 """Pick the model and effort for one Orca worker, from the routing table.
 
 The coordinator runs this before every worker-start and passes the flags it
-prints. The table is the "## Model routing" section of the repo's
-docs/agents/orchestration.md, read fresh each time.
+prints. The table is the plugin's defaults with the rows the repo sets in
+`routing` in its config laid over them, so a new release changes every row the
+repo has not set. docs/agents/orchestration.md holds a copy; this warns when
+that copy is out of date.
 
   route.py --role build --ticket 123 --lookup
       reads #123's `size:` and `risk` labels from GitHub (read only); a risk
@@ -39,7 +41,7 @@ def main() -> None:
     p.add_argument("--paths", nargs="*", default=[], help="paths the ticket touches; a configured risk path raises the model")
     p.add_argument("--variant", help="a named variant row, e.g. conflict or escalated")
     p.add_argument("--lookup", action="store_true", help="read the size and risk labels from GitHub")
-    p.add_argument("--doc", help="orchestration doc (default: orchestration_doc in the config)")
+    p.add_argument("--doc", help="orchestration doc to check for a stale copy (default: orchestration_doc in the config)")
     p.add_argument("--shell", action="store_true", help="print only the worker-start flags, shell-quoted")
     args = p.parse_args()
     cfg = cli.load(args)
@@ -62,7 +64,10 @@ def main() -> None:
         warnings.append("no size: label: routed as M; run estimate.py so the next dispatch is sized")
 
     try:
-        table = routing.parse_table(open(args.doc or cfg["orchestration_doc"]).read())
+        doc_path = args.doc or cfg["orchestration_doc"]
+        doc = open(doc_path).read() if os.path.exists(doc_path) else None
+        table, stale = routing.resolve(cfg.get("routing"), doc, size_word="size", seed="seed_docs.py")
+        warnings += stale
         choice = routing.select(table, args.role, size=size, risk=risk, variant=args.variant)
         flags = routing.worker_flags(choice, cfg["models"])
     except (OSError, routing.RoutingError) as exc:
