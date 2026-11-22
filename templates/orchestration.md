@@ -30,9 +30,9 @@ Before every worker, run `python3 {{FLOW_SCRIPTS}}/route.py --role <role> --tick
 | merge | Merger | haiku | low | |
 | merge.conflict | Merger on a real conflict | sonnet | medium | |
 | check | Spec check before a ticket merges into the integration branch | haiku | low | One per ticket. |
-| review | Integration `code-review`, once per milestone | sonnet | high | |
-| review.risk | Integration `code-review`, milestone has `risk` tickets | opus | | |
-| fix | Fixer | sonnet | medium | |
+| review | Integration `code-review`, once per milestone | opus | | |
+| review.risk | Integration `code-review`, milestone has `risk` tickets | opus | | Same as `review`; kept so `--risk` resolves. |
+| fix | Fixer for the integration review's findings | opus | | |
 
 Size comes from the issue's `{{SIZE_S}}`, `{{SIZE_M}}` or `{{SIZE_L}}` label. The `{{RISK_LABEL}}` label, or a ticket that names a path in `risk_paths` in `docs/agents/flow.json`, raises the model to the `.risk` row. A ticket with no size label routes as M and `route.py` warns; run `estimate.py propose` for the founder to approve sizes.
 
