@@ -18,8 +18,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Round-one approval no longer needs a verdict in Orca's outcome, which only says the checker finished: a ticket with one check or review dispatch and no fixer was approved in round one.
 - A follow-up to the same implementer is not an escalation; a change of build model is.
 
-||||||| 37f4e1a
-
 ## 0.6.0 - 2026-11-22
 
 ### Features
