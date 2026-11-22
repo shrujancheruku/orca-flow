@@ -38,24 +38,37 @@ VIEWER = Path(__file__).resolve().parent.parent / "viewer" / "profile.html"
 MERGED_WORDS = ("merged", "success", "succeeded", "done", "completed", "landed")
 
 
-def locate(worker: dict, root: Path, show) -> list:
-    paths = list(worker["transcript_paths"])
-    if not paths and worker.get("dispatch_id") and show is not None:
-        try:
-            detail = show(worker["dispatch_id"])
-            paths = orca.find_paths(detail, "transcript", ".jsonl")
-            if not worker.get("worktree"):
-                worker["worktree"] = orca.first(detail, "worktreePath", "worktree_path", "cwd")
-        except orca.OrcaError:
-            paths = []
-    summaries = [transcripts.summarise_file(p) for p in paths if os.path.exists(p)]
-    if not summaries and worker.get("worktree"):
-        start, end = parse_ts(worker.get("started_at")), parse_ts(worker.get("ended_at"))
-        for p in transcripts.files_for_worktree(worker["worktree"], root):
-            s = transcripts.summarise_file(p)
-            if transcripts.in_window(s, start, end):
-                summaries.append(s)
-    return summaries
+def locate(workers: list, root: Path) -> None:
+    """Fill each worker's `transcripts` from the sessions in its worktree, each message counted once."""
+    files = {}
+    for worktree in {w.get("worktree") for w in workers if w.get("worktree")}:
+        for path in transcripts.files_for_worktree(worktree, root):
+            files.setdefault((worktree, transcripts.session_of(path)), []).append(path)
+    sessions = []
+    for (worktree, session), paths in files.items():
+        firsts = [f for f in (transcripts.summarise_file(p).get("first_at") for p in paths) if f]
+        sessions.append({"session": session, "worktree": worktree, "first_at": min(firsts) if firsts else None})
+    owned = transcripts.assign(workers, sessions)
+    for w in workers:
+        w["transcripts"] = []
+        for session, start, end in owned.get(w["dispatch_id"], []):
+            for path in files[(w["worktree"], session)]:
+                summary = transcripts.summarise_file(path, start, end)
+                if summary["messages"]:
+                    w["transcripts"].append(summary)
+
+
+def inherit_titles(workers: list) -> None:
+    """A follow-up sent to a worker has a free-text title; it takes the title of the worker it continues."""
+    by_id = {w["dispatch_id"]: w for w in workers}
+    for w in workers:
+        cur, seen = w, set()
+        while routing.parse_task_title(cur.get("task_title", "")) is None and cur.get("follow_up_of") in by_id \
+                and cur["dispatch_id"] not in seen:
+            seen.add(cur["dispatch_id"])
+            cur = by_id[cur["follow_up_of"]]
+        if cur is not w and routing.parse_task_title(cur.get("task_title", "")):
+            w["subject"], w["task_title"] = w.get("task_title", ""), cur["task_title"]
 
 
 def main() -> None:
@@ -70,14 +83,15 @@ def main() -> None:
     p.add_argument("--pr", help="integration PR number to comment the summary on (with --apply)")
     args = p.parse_args()
 
+    titles, show = {}, None
     if args.workers_json:
         with open(args.workers_json) as fh:
             raw = json.load(fh)
         raw = raw.get("result", raw).get("workers", raw) if isinstance(raw, dict) else raw
-        show = None
     else:
         try:
             raw = orca.list_workers(args.run)
+            titles = orca.list_tasks(args.run)
         except orca.OrcaError as exc:
             cli.die(str(exc))
         show = orca.show_worker
@@ -87,14 +101,21 @@ def main() -> None:
     # Transcripts are read as Claude's; a worker on another agent shows up as
     # missing until flowlib/agents.py and flowlib/transcripts.py learn it.
     root = agents.transcript_root(agents.DEFAULT_AGENT)
-    workers, missing = [], []
+    workers = []
     for item in raw:
-        w = orca.normalise_worker(item)
-        w["transcripts"] = locate(w, root, show)
-        if not w["transcripts"]:
-            missing.append(w)
+        detail = None
+        if show is not None and item.get("dispatchId"):
+            try:
+                detail = show(item["dispatchId"])
+            except orca.OrcaError:
+                detail = None
+        w = orca.worker_record(item, detail, titles)
         w.pop("raw", None)
         workers.append(w)
+    inherit_titles(workers)
+    locate(workers, root)
+    # A follow-up that only relayed a message may have no API message of its own.
+    missing = [w for w in workers if not w["transcripts"] and not w.get("follow_up_of")]
     if missing and not args.allow_missing:
         print("No transcript found for these workers:", file=sys.stderr)
         for w in missing:
