@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import tempfile
@@ -71,13 +72,13 @@ class SeedDocsTest(unittest.TestCase):
         return Path(d)
 
     def apply(self, root):
-        for path, content, _ in seed_docs.plan(root, seed_docs.values(cfg())):
+        for path, content, _ in seed_docs.plan(root, cfg()):
             if content is not None:
                 path.write_text(content)
 
     def test_refuses_without_matts_tracker_doc(self):
         with self.assertRaises(seeding.SeedError) as ctx:
-            seed_docs.plan(self.repo(tracker=None), seed_docs.values(cfg()))
+            seed_docs.plan(self.repo(tracker=None), cfg())
         self.assertIn("/setup-matt-pocock-skills", str(ctx.exception))
 
     def test_seeds_and_a_rerun_writes_nothing(self):
@@ -89,21 +90,56 @@ class SeedDocsTest(unittest.TestCase):
         self.assertIn("orca worktree create --issue", tracker)
         self.assertIn("Mine.", (root / "CLAUDE.md").read_text())
         self.assertIn("Routing", "Routing " + (root / "docs/agents/orchestration.md").read_text()[:5])
-        again = seed_docs.plan(root, seed_docs.values(cfg()))
+        again = seed_docs.plan(root, cfg())
         self.assertTrue(all(content is None for _, content, _ in again), [w for _, c, w in again])
 
-    def test_never_replaces_a_users_orchestration_doc_or_text_in_matts_files(self):
+    def test_a_users_orchestration_doc_keeps_its_text_and_gains_the_routing_table(self):
         root = self.repo()
         (root / "docs/agents/orchestration.md").write_text("# mine\n")
         self.apply(root)
-        self.assertEqual((root / "docs/agents/orchestration.md").read_text(), "# mine\n")
+        orch = (root / "docs/agents/orchestration.md").read_text()
+        self.assertTrue(orch.startswith("# mine\n\n## Model routing\n\n<!-- flow:begin routing -->"))
         p = root / "docs/agents/issue-tracker.md"
         p.write_text(p.read_text() + "\nMy own note.\n")
         self.apply(root)
         self.assertTrue(p.read_text().rstrip().endswith("My own note."))
 
+    def test_a_new_release_rewrites_only_the_routing_table(self):
+        root = self.repo()
+        self.apply(root)
+        orch = root / "docs/agents/orchestration.md"
+        edited = orch.read_text().replace("## Escalation", "## Escalation\n\nOur own rule.").replace(
+            "| fix | Fixer for the integration review's findings | opus |", "| fix | Fixer | sonnet |")
+        orch.write_text(edited)
+        self.apply(root)
+        now = orch.read_text()
+        self.assertIn("Our own rule.", now)
+        self.assertIn("| fix | Fixer for the integration review's findings | opus |", now)
+
+    def test_a_hand_kept_table_is_handed_over_and_its_own_rows_move_to_the_config(self):
+        root = self.repo()
+        orch = root / "docs/agents/orchestration.md"
+        orch.write_text("# Orchestration\n\n## Model routing\n\n| Key | Role | Model | Effort | Notes |\n|---|---|---|---|---|\n"
+                        "| build.M | Implementer | opus | | |\n| fix | Fixer | sonnet | medium | |\n\n## Holds\n\nOurs.\n")
+        conf = root / "docs/agents/flow.json"
+        conf.write_text(json.dumps({"github_repo": "acme/app"}))
+        c = cfg()
+        c["_path"] = str(conf)
+        plans = seed_docs.plan(root, c)
+        for path, content, _ in plans:
+            if content is not None:
+                path.write_text(content)
+        self.assertEqual(json.loads(conf.read_text())["routing"], {"build.M": {"model": "opus", "effort": None}})
+        text = orch.read_text()
+        self.assertIn("| build.M | Implementer, size M | opus |  | Set in `flow.json`. |", text)
+        self.assertIn("| fix | Fixer for the integration review's findings | opus |", text)
+        self.assertTrue(text.rstrip().endswith("## Holds\n\nOurs."))
+        from flowlib import config
+        again = seed_docs.plan(root, dict(config.load(str(conf)), _path=str(conf)))
+        self.assertTrue(all(content is None for _, content, _ in again if _ is not None), [w for _, c2, w in again])
+
     def test_missing_triage_file_is_skipped(self):
-        plans = seed_docs.plan(self.repo(labels=None), seed_docs.values(cfg()))
+        plans = seed_docs.plan(self.repo(labels=None), cfg())
         self.assertTrue(any("skipped" in w for _, _, w in plans))
 
 

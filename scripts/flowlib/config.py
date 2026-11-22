@@ -46,6 +46,9 @@ DEFAULTS = {
     "size_lines": {"S": 300, "M": 1000},
     "orchestration_doc": "docs/agents/orchestration.md",
     "models": {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"},
+    # Routing rows this repo sets itself: {"fix": {"model": "sonnet", "effort": "medium"}}.
+    # Every other row is the plugin's default (flowlib/routing.py) and changes with its releases.
+    "routing": {},
     "slack_prefix": "",
 }
 
@@ -73,6 +76,7 @@ def _merge(base: dict, over: dict) -> dict:
 def check(cfg: dict) -> list:
     """Return a list of problems. Empty means the config is usable."""
     problems = agents.check_models(cfg.get("models"))
+    problems += routing_check(cfg.get("routing"))
     if cfg.get("tracker") not in TRACKERS:
         problems.append(f"tracker must be one of {', '.join(TRACKERS)}")
     repo = cfg.get("github_repo", "")
@@ -92,6 +96,12 @@ def check(cfg: dict) -> list:
         if not cfg.get("labels", {}).get(key):
             problems.append(f"missing labels.{key}")
     return problems
+
+
+def routing_check(raw) -> list:
+    from . import routing  # routing imports this module
+
+    return routing.check_overrides(raw)
 
 
 def from_dict(raw: dict) -> dict:

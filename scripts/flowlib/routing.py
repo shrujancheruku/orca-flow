@@ -1,15 +1,17 @@
 """Pick a model and effort for an Orca worker from the routing table.
 
-The table lives in the repo's docs/agents/orchestration.md under
-"## Model routing". The coordinator runs route.py on every dispatch, so the
-doc is the single source and nobody routes from memory.
+The table's defaults live here, in the plugin, so a new release changes every
+row a repo has not set itself. A repo sets a row in `routing` in its
+docs/agents/flow.json. The table in docs/agents/orchestration.md is a copy the
+plugin writes between its own markers for people and agents to read; route.py
+never routes from it, and warns when it is out of date.
 """
 
 from __future__ import annotations
 
 import re
 
-from . import agents, config, estimating, repofacts
+from . import agents, config, estimating, repofacts, seeding
 
 HEADING = "model routing"
 ROLES = ("coordinator", "scout", "build", "merge", "check", "review", "fix")
@@ -17,6 +19,176 @@ ROLES = ("coordinator", "scout", "build", "merge", "check", "review", "fix")
 
 class RoutingError(Exception):
     pass
+
+
+BLOCK = "routing"
+
+# (key, role, model, effort, notes). {size} reads "size" on GitHub and "Estimate" on Linear.
+DEFAULT_ROWS = (
+    ("coordinator", "Coordinator", "opus", "medium", "The session running `/flow:build`."),
+    ("scout", "Exploration or scout", "haiku", "low", "A subagent inside a worker."),
+    ("build.S", "Implementer, {size} S, no `risk`", "haiku", None, "Escalates once; see Escalation."),
+    ("build.S.risk", "Implementer, {size} S, `risk`", "sonnet", "medium", ""),
+    ("build.M", "Implementer, {size} M", "sonnet", "medium", ""),
+    ("build.M.risk", "Implementer, {size} M, `risk`", "sonnet", "high", ""),
+    ("build.L", "Implementer, {size} L", "sonnet", "high", ""),
+    ("build.L.risk", "Implementer, {size} L, `risk`", "opus", None, ""),
+    ("build.escalated", "Implementer after an escalation", "sonnet", "medium", "A fresh worker on the same branch."),
+    ("merge", "Merger", "haiku", "low", ""),
+    ("merge.conflict", "Merger on a real conflict", "sonnet", "medium", ""),
+    ("check", "Spec check before a ticket merges into the integration branch", "haiku", "low", "One per ticket."),
+    ("review", "Integration `code-review`, once per milestone", "opus", None, ""),
+    ("review.risk", "Integration `code-review`, milestone has `risk` tickets", "opus", None,
+     "Same as `review`; kept so `--risk` resolves."),
+    ("fix", "Fixer for the integration review's findings", "opus", None, ""),
+)
+
+# What earlier releases shipped for a row. A table written before the defaults
+# moved here may still hold these; such a row was never the repo's own choice,
+# so it follows the current default. Add the old value here when a default changes.
+PAST_DEFAULTS = {
+    "review": [("sonnet", "high")],
+    "fix": [("sonnet", "medium")],
+}
+
+SET_NOTE = "Set in `flow.json`."
+FOOTER = ("The flow plugin writes this table from its defaults and from `routing` in `docs/agents/flow.json`. "
+          "To change a row, set it there (`\"routing\": {\"fix\": {\"model\": \"sonnet\", \"effort\": \"medium\"}}`), "
+          "not here: a row you have not set follows the plugin's default and changes with its releases.")
+
+
+def default_table(size_word: str = "size") -> dict:
+    """{lower key: row} for the plugin's defaults, in table order."""
+    return {
+        key.lower(): {"key": key, "role": role.format(size=size_word), "model": model, "effort": effort,
+                      "notes": notes, "set": False}
+        for key, role, model, effort, notes in DEFAULT_ROWS
+    }
+
+
+def check_overrides(raw) -> list:
+    """Problems with a config's `routing` value. Empty means usable."""
+    if raw is None:
+        return []
+    if not isinstance(raw, dict):
+        return ["routing must be an object of row key -> {model, effort}"]
+    problems = []
+    for key, row in raw.items():
+        if not isinstance(row, dict) or not isinstance(row.get("model"), str) or not row["model"].strip():
+            problems.append(f"routing.{key} needs a model")
+        elif row.get("effort") not in (None, "") and not isinstance(row["effort"], str):
+            problems.append(f"routing.{key}.effort must be a string or null")
+        elif key.split(".")[0].lower() not in ROLES:
+            problems.append(f"routing.{key} must start with one of {', '.join(ROLES)}")
+    return problems
+
+
+def effective(overrides=None, size_word: str = "size") -> dict:
+    """The plugin's defaults with the repo's own rows laid over them."""
+    table = default_table(size_word)
+    for key, row in (overrides or {}).items():
+        base = table.get(key.lower(), {"key": key, "role": "", "notes": ""})
+        table[key.lower()] = dict(
+            base, model=row["model"].strip().lower(), effort=(row.get("effort") or "").strip().lower() or None,
+            role=row.get("role") or base["role"], notes=row.get("notes") or base["notes"], set=True)
+    return table
+
+
+def render(table: dict) -> str:
+    """The marked block's text: the table, then how to change it."""
+    lines = ["| Key | Role | Model | Effort | Notes |", "|---|---|---|---|---|"]
+    for row in table.values():
+        notes = " ".join(n for n in (row["notes"], SET_NOTE if row.get("set") else "") if n)
+        lines.append(f"| {row['key']} | {row['role']} | {row['model']} | {row['effort'] or ''} | {notes} |")
+    return "\n".join(lines) + "\n\n" + FOOTER
+
+
+def legacy_overrides(doc_table: dict) -> dict:
+    """Rows of a hand-kept table that are the repo's own choice.
+
+    A row counts as the repo's own when it is neither the current default nor
+    anything an earlier release shipped for that key, or when the key is new.
+    """
+    defaults = default_table()
+    out = {}
+    for key, row in doc_table.items():
+        got = (row["model"], row["effort"])
+        base = defaults.get(key)
+        if base is None:
+            out[key] = {"model": row["model"], "effort": row["effort"]}
+            for extra in ("role", "notes"):
+                if row.get(extra):
+                    out[key][extra] = row[extra]
+        elif got != (base["model"], base["effort"]) and got not in PAST_DEFAULTS.get(base["key"], []):
+            out[base["key"]] = {"model": row["model"], "effort": row["effort"]}
+    return out
+
+
+def block_text(doc: str):
+    """What sits between the routing markers in the doc, or None when it has no block."""
+    span = seeding._span(doc, BLOCK)
+    if span is None:
+        return None
+    return doc[span[0] + len(seeding.begin(BLOCK)): span[1] - len(seeding.end(BLOCK))].strip()
+
+
+def _legacy_table_span(doc: str):
+    """(start, end) of the hand-kept table under "## Model routing", or None."""
+    sec = None
+    for m in re.finditer(r"^#{2,3}\s+(.*)$", doc, re.MULTILINE):
+        if m.group(1).strip().lower() == HEADING:
+            sec = m.end()
+            break
+    if sec is None:
+        return None
+    nxt = re.compile(r"^#{1,3}\s", re.MULTILINE).search(doc, sec)
+    stop = nxt.start() if nxt else len(doc)
+    start = end = None
+    pos = sec
+    for line in doc[sec:stop].splitlines(keepends=True):
+        if line.strip().startswith("|"):
+            start = pos if start is None else start
+            end = pos + len(line.rstrip("\n"))
+        elif start is not None:
+            break
+        pos += len(line)
+    return (start, end) if start is not None else None
+
+
+def place_block(doc: str, table: dict) -> str:
+    """Put the routing block in the doc: over its own block, over a hand-kept table, or under a new heading."""
+    body = render(table)
+    if seeding._span(doc, BLOCK):
+        return seeding.upsert(doc, BLOCK, body)
+    span = _legacy_table_span(doc)
+    if span:
+        return doc[: span[0]] + seeding.wrap(BLOCK, body) + doc[span[1]:]
+    return (doc.rstrip() + "\n\n" if doc.strip() else "") + "## Model routing\n\n" + seeding.wrap(BLOCK, body) + "\n"
+
+
+def resolve(overrides, doc, size_word: str = "size", seed: str = "seed_docs.py") -> tuple:
+    """(table, warnings) for one dispatch.
+
+    The table is the defaults plus the repo's `routing`. The doc is read only to
+    keep a not-yet-migrated repo's own rows and to say when its copy is stale.
+    """
+    overrides = dict(overrides or {})
+    warnings = []
+    if doc is not None and block_text(doc) is None:
+        try:
+            legacy = legacy_overrides(parse_table(doc))
+        except RoutingError:
+            legacy = {}
+        set_keys = {k.lower() for k in overrides}
+        kept = {k: v for k, v in legacy.items() if k.lower() not in set_keys}
+        overrides.update(kept)
+        warnings.append(
+            f"the orchestration doc's routing table is hand-kept: run {seed} --apply to hand it to the plugin"
+            + (f" (your rows {', '.join(sorted(kept))} are kept and move to the config)" if kept else ""))
+    table = effective(overrides, size_word)
+    if doc is not None and block_text(doc) is not None and block_text(doc) != render(table).strip():
+        warnings.append(f"the orchestration doc's routing table is out of date: run {seed} --apply")
+    return table, warnings
 
 
 def parse_table(markdown: str) -> dict:

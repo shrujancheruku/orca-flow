@@ -12,25 +12,9 @@ How a spec gets built here. `/flow:build` follows this file.
 
 ## Model routing
 
-Before every `worker-start`, run `python3 {{ADAPTER_SCRIPTS}}/route_linear.py --role <role> --ticket {{TEAM_KEY}}-<n> --lookup` and pass the `flags` and `task_title` it prints. Read the row from this table each time; never route from memory. Always pass `--model`: the user's own settings default to Opus.
+Before every `worker-start`, run `python3 {{ADAPTER_SCRIPTS}}/route_linear.py --role <role> --ticket {{TEAM_KEY}}-<n> --lookup` and pass the `flags` and `task_title` it prints. Never route from memory: the script decides, and the table below is a copy of what it uses. Always pass `--model`: the user's own settings default to Opus.
 
-| Key | Role | Model | Effort | Notes |
-|---|---|---|---|---|
-| coordinator | Coordinator | opus | medium | The session running `/flow:build`. |
-| scout | Exploration or scout | haiku | low | A subagent inside a worker. |
-| build.S | Implementer, Estimate S, no `risk` | haiku | | Escalates once; see Escalation. |
-| build.S.risk | Implementer, Estimate S, `risk` | sonnet | medium | |
-| build.M | Implementer, Estimate M | sonnet | medium | |
-| build.M.risk | Implementer, Estimate M, `risk` | sonnet | high | |
-| build.L | Implementer, Estimate L | sonnet | high | |
-| build.L.risk | Implementer, Estimate L, `risk` | opus | | |
-| build.escalated | Implementer after an escalation | sonnet | medium | A fresh worker on the same branch. |
-| merge | Merger | haiku | low | |
-| merge.conflict | Merger on a real conflict | sonnet | medium | |
-| check | Spec check before a ticket merges into the integration branch | haiku | low | One per ticket. |
-| review | Integration `code-review`, once per milestone | opus | | |
-| review.risk | Integration `code-review`, milestone has `risk` tickets | opus | | Same as `review`; kept so `--risk` resolves. |
-| fix | Fixer for the integration review's findings | opus | | |
+{{ROUTING_TABLE}}
 
 Size comes from the Linear Estimate, banded by `estimate_scale` in `docs/agents/linear.json`. A ticket with no estimate routes as M and `route_linear.py` warns; run `{{ADAPTER_SCRIPTS}}/estimate_linear.py propose` for the founder to approve.
 
