@@ -50,6 +50,9 @@ DEFAULTS = {
     # Every other row is the plugin's default (flowlib/routing.py) and changes with its releases.
     "routing": {},
     "slack_prefix": "",
+    # The status footer (status.py) flags a live worker as slow past slow_factor times
+    # the median of its role's finished tasks in the run, or past slow_minutes without one.
+    "status": {"slow_factor": 3, "slow_minutes": 120},
 }
 
 REQUIRED = [("github_repo",)]
@@ -92,6 +95,10 @@ def check(cfg: dict) -> list:
     lines = cfg.get("size_lines", {})
     if not (isinstance(lines.get("S"), int) and isinstance(lines.get("M"), int) and 0 < lines["S"] < lines["M"]):
         problems.append("size_lines needs whole numbers with 0 < S < M")
+    st = cfg.get("status", {})
+    if not (isinstance(st, dict) and all(isinstance(st.get(k), (int, float)) and not isinstance(st.get(k), bool)
+                                         and st[k] > 0 for k in ("slow_factor", "slow_minutes"))):
+        problems.append("status.slow_factor and status.slow_minutes must be positive numbers")
     for key in ("risk", "integrated"):
         if not cfg.get("labels", {}).get(key):
             problems.append(f"missing labels.{key}")

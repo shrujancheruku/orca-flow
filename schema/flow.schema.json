@@ -97,6 +97,15 @@
         }
       }
     },
-    "slack_prefix": { "type": "string", "description": "Channels are #<prefix>-prs and #<prefix>-needs-you." }
+    "slack_prefix": { "type": "string", "description": "Channels are #<prefix>-prs and #<prefix>-needs-you." },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "slow_factor": { "type": "number", "exclusiveMinimum": 0, "default": 3 },
+        "slow_minutes": { "type": "number", "exclusiveMinimum": 0, "default": 120 }
+      },
+      "description": "The status footer flags a live worker as slow past slow_factor times the median of its role's finished tasks in the run, or past slow_minutes when the role has fewer than 3."
+    }
   }
 }

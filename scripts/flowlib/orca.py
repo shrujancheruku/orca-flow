@@ -23,11 +23,13 @@ class OrcaError(Exception):
     pass
 
 
-def orca(args: list) -> dict:
+def orca(args: list, timeout: float | None = None) -> dict:
     try:
-        out = subprocess.run(["orca"] + args, capture_output=True, text=True, check=False)
+        out = subprocess.run(["orca"] + args, capture_output=True, text=True, check=False, timeout=timeout)
     except FileNotFoundError as exc:
         raise OrcaError("the orca CLI is missing") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise OrcaError(f"orca {' '.join(args[:2])} timed out after {timeout:g}s") from exc
     if out.returncode != 0:
         raise OrcaError(f"orca {' '.join(args[:2])} failed: {out.stderr.strip()[:300]}")
     try:

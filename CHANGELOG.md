@@ -2,6 +2,15 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Features
+
+- `status.py` prints a status footer, and `/flow:build` prints it (`--plain`) at the end of every coordinator turn, so the founder no longer has to ask what is waiting on them. **In progress** lists each live worker with its ticket, role, model and running time, flagged when it has no heartbeat, exited without reporting, or has run more than three times its role's median in the run (two hours when there is no median; `status` in `flow.json` sets both), then the milestone's tally (integrated, in progress, ready next, blocked, waiting on you). **Waiting on you** has one section per source in a fixed order, each left out when empty: `ready-for-human` tickets in the milestone and, apart, outside it; `needs-info` tickets; the coordinator's asks; worker questions and escalations Orca has not marked handled, and pending gates; and the integration PR once it leaves draft or every ticket is integrated, with green, red and pending check counts. The founder merges it. When nothing waits it prints `Waiting on you: nothing`.
+- `status.py --ask "<text>" [--ticket <n>] [--where <text>]` records what the coordinator asked the founder and prints an id; `--done <id>` clears it. The asks are in `<git common dir>/flow/asks.jsonl` (mode 0600), inside `.git` so they are never tracked and every worktree of the repo shares them. An ask whose issue or PR has closed or merged is dropped.
+- The footer reads little: five `orca` reads and one GraphQL query (two when the milestone comes from the integration PR), filtered by label, milestone or number. Every printed line has control characters, bidi overrides and triple backticks stripped, and titles are cut. A source that fails is named on one `Unavailable:` line and the footer still exits 0. `--json` gives the same data; on a terminal the default output has colour.
+- `flowlib.orca.orca()` and `flowlib.github.run_gh()` take a `timeout`.
+
 ## 0.8.0 - 2026-11-22
 
 ### Features

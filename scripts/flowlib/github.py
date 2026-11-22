@@ -53,11 +53,13 @@ class GitHubError(Exception):
     pass
 
 
-def run_gh(args: list, stdin: str | None = None) -> str:
+def run_gh(args: list, stdin: str | None = None, timeout: float | None = None) -> str:
     try:
-        out = subprocess.run(["gh"] + args, input=stdin, capture_output=True, text=True, check=False)
+        out = subprocess.run(["gh"] + args, input=stdin, capture_output=True, text=True, check=False, timeout=timeout)
     except FileNotFoundError as exc:
         raise GitHubError("the gh CLI is missing") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise GitHubError(f"gh {' '.join(args[:2])} timed out after {timeout:g}s") from exc
     if out.returncode != 0:
         raise GitHubError(f"gh {' '.join(args[:2])} failed: {out.stderr.strip()[:300]}")
     return out.stdout
