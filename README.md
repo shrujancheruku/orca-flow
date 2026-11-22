@@ -34,8 +34,8 @@ The table lives in your repo's `docs/agents/orchestration.md`; `route.py` reads 
 | Scout | Haiku | low |
 | Merger | Haiku | low (Sonnet on a real conflict) |
 | Per-ticket check | Haiku | low |
-| Integration review | Sonnet | high (Opus with risk tickets) |
-| Fixer | Sonnet | medium |
+| Integration review | Opus | |
+| Fixer | Opus | |
 | Coordinator | Opus | medium |
 
 One escalation: a Haiku implementer that fails twice is replaced by Sonnet on the same branch. S + risk and M + risk have rows too; see the seeded table.

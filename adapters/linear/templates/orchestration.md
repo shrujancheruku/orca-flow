@@ -28,9 +28,9 @@ Before every `worker-start`, run `python3 {{ADAPTER_SCRIPTS}}/route_linear.py --
 | merge | Merger | haiku | low | |
 | merge.conflict | Merger on a real conflict | sonnet | medium | |
 | check | Spec check before a ticket merges into the integration branch | haiku | low | One per ticket. |
-| review | Integration `code-review`, once per milestone | sonnet | high | |
-| review.risk | Integration `code-review`, milestone has `risk` tickets | opus | | |
-| fix | Fixer | sonnet | medium | |
+| review | Integration `code-review`, once per milestone | opus | | |
+| review.risk | Integration `code-review`, milestone has `risk` tickets | opus | | Same as `review`; kept so `--risk` resolves. |
+| fix | Fixer for the integration review's findings | opus | | |
 
 Size comes from the Linear Estimate, banded by `estimate_scale` in `docs/agents/linear.json`. A ticket with no estimate routes as M and `route_linear.py` warns; run `{{ADAPTER_SCRIPTS}}/estimate_linear.py propose` for the founder to approve.
 

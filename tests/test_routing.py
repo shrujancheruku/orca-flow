@@ -28,9 +28,9 @@ class RoutingTest(unittest.TestCase):
         self.assertEqual(self.pick("merge"), ("haiku", "low"))
         self.assertEqual(self.pick("merge", variant="conflict")[0], "sonnet")
         self.assertEqual(self.pick("check"), ("haiku", "low"))
-        self.assertEqual(self.pick("review"), ("sonnet", "high"))
+        self.assertEqual(self.pick("review"), ("opus", None))
         self.assertEqual(self.pick("review", risk=True)[0], "opus")
-        self.assertEqual(self.pick("fix"), ("sonnet", "medium"))
+        self.assertEqual(self.pick("fix"), ("opus", None))
         self.assertEqual(self.pick("build", variant="escalated")[0], "sonnet")
 
     def test_the_whole_table_is_pinned(self):
@@ -43,8 +43,8 @@ class RoutingTest(unittest.TestCase):
             "build.l": ("sonnet", "high"), "build.l.risk": ("opus", None),
             "build.escalated": ("sonnet", "medium"),
             "merge": ("haiku", "low"), "merge.conflict": ("sonnet", "medium"),
-            "check": ("haiku", "low"), "review": ("sonnet", "high"), "review.risk": ("opus", None),
-            "fix": ("sonnet", "medium"),
+            "check": ("haiku", "low"), "review": ("opus", None), "review.risk": ("opus", None),
+            "fix": ("opus", None),
         })
 
     def test_size_label_and_risk_pick_the_row(self):

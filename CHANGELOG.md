@@ -2,6 +2,12 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Features
+
+- The integration review and its fixer both route to Opus in the routing table that `/flow:init` writes (`review`, `review.risk` and `fix`; they were Sonnet high, Opus and Sonnet medium). A milestone's review found blocking problems in risk paths that per-ticket checks had passed, and its fixes touch the same code. A repo that already has the table keeps its own rows until it edits them.
+
 ## 0.5.0 - 2026-11-14
 
 ### Features
