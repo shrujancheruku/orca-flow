@@ -2,6 +2,12 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Features
+
+- `cleanup.py --run <run id>` removes a finished run's worktrees, and `/flow:build` runs it once the integration PR is merged. It goes through `git worktree remove`, because `orca worktree rm` (Orca 1.4.269) stops the worktree's terminals, fails its own git removal and then waits until it times out, leaving the checkout on disk. A worktree is removed only when it has no uncommitted file and its HEAD is on a remote branch; the rest are kept and named. Nothing is forced and no branch is deleted. Orca drops its record of a worktree once the checkout is gone.
+
 ## 0.7.0 - 2026-11-22
 
 ### Features
