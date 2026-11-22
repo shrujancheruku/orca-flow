@@ -64,7 +64,7 @@ def build_profile(run_id: str, workers: list, coordinator: dict | None, merged: 
     merged: ticket ids (`#123`) that merged into the integration branch in this run
     """
     tickets = defaultdict(lambda: {"cost": 0.0, "by_model": {}, "by_role": defaultdict(float), "workers": 0,
-                                   "build_models": [], "reviews": []})
+                                   "build_models": [], "reviews": [], "review_dispatches": 0, "fixes": 0})
     by_model, by_role = {}, defaultdict(float)
     worker_rows = []
     unparsed_titles = []
@@ -91,6 +91,9 @@ def build_profile(run_id: str, workers: list, coordinator: dict | None, merged: 
                 t["build_models"].append(routed)
             if role in ("review", "check"):
                 t["reviews"].append(_verdict(w.get("outcome", "")))
+                t["review_dispatches"] += 1
+            if role == "fix":
+                t["fixes"] += 1
         worker_rows.append({
             "dispatch_id": w.get("dispatch_id"),
             "task_title": w.get("task_title"),
@@ -109,10 +112,17 @@ def build_profile(run_id: str, workers: list, coordinator: dict | None, merged: 
     escalations = 0
     reviewed = approved_first = 0
     for ident, t in sorted(tickets.items()):
-        escalated = len(t["build_models"]) > 1
+        # a follow-up to the same implementer repeats its model; only a change of model is an escalation
+        escalated = len(set(t["build_models"])) > 1
         escalations += int(escalated)
         rounds = sum(1 for v in t["reviews"] if v is not None)
         first = next((v for v in t["reviews"] if v is not None), None)
+        if first is None and t["review_dispatches"]:
+            # Orca's outcome says the checker finished, not what it found. A second
+            # check or review dispatch (a re-check is a follow-up to the first) or a
+            # fixer means round one asked for changes.
+            rounds = t["review_dispatches"]
+            first = "approved" if rounds == 1 and not t["fixes"] else "changes"
         if first is not None:
             reviewed += 1
             approved_first += int(first == "approved")

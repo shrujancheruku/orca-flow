@@ -1,9 +1,16 @@
 """Read Orca orchestration state through the `orca` CLI.
 
-UNVERIFIED: the JSON field names of worker-list and worker-show were not
-seen with a real worker (no run had workers when this was written). The
-readers below search the JSON for likely keys and fail loudly when they
-find nothing. Confirm on the first real run and pin the names here.
+Field names were pinned on the first real run (Orca, 2026-11):
+
+  worker-list   dispatchId, taskId, state, workspace ("<repo id>::<worktree path>")
+  task-list     id, title: the task title lives here, not on the worker
+  worker-show   dispatch.dispatchedAt ("YYYY-MM-DD HH:MM:SS", UTC), dispatch.completedAt,
+                dispatch.followUpOf (set when `orchestration send` continued a worker),
+                projection.outcome
+
+No record carries a transcript path, so transcripts are found by worktree
+(flowlib/transcripts.py). The key-guessing readers below stay as a fallback
+for a worker list read from a file.
 """
 
 from __future__ import annotations
@@ -93,3 +100,35 @@ def list_workers(run_id: str) -> list:
 
 def show_worker(dispatch_id: str) -> dict:
     return orca(["orchestration", "worker-show", "--dispatch", dispatch_id, "--json", "--full"])
+
+
+def list_tasks(run_id: str) -> dict:
+    """{task id: title} for a run."""
+    data = orca(["orchestration", "task-list", "--run", run_id, "--json"])
+    tasks = data.get("tasks", []) if isinstance(data, dict) else data
+    return {t["id"]: t.get("title") or "" for t in tasks if isinstance(t, dict) and t.get("id")}
+
+
+def utc(value):
+    """Orca's "2026-11-22 05:10:40" (UTC, no zone) as ISO; an ISO value is returned as it is."""
+    if isinstance(value, str) and len(value) == 19 and value[10] == " ":
+        return value.replace(" ", "T") + "+00:00"
+    return value
+
+
+def worker_record(raw: dict, detail: dict | None = None, titles: dict | None = None) -> dict:
+    """One worker with the pinned field names, falling back to the guesses in normalise_worker."""
+    w = normalise_worker(raw)
+    detail = detail or {}
+    dispatch = detail.get("dispatch") or {}
+    title = (titles or {}).get(raw.get("taskId"))
+    if title:
+        w["task_title"] = title
+    workspace = raw.get("workspace") or (detail.get("worker") or {}).get("worktreeId") or ""
+    if "::" in workspace:
+        w["worktree"] = workspace.split("::", 1)[1]
+    w["started_at"] = utc(dispatch.get("dispatchedAt")) or w["started_at"]
+    w["ended_at"] = utc(dispatch.get("completedAt")) or w["ended_at"]
+    w["follow_up_of"] = dispatch.get("followUpOf")
+    w["outcome"] = (detail.get("projection") or {}).get("outcome") or raw.get("state") or w["outcome"]
+    return w

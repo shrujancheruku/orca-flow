@@ -2,6 +2,15 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixes
+
+- `profile.py` reads what Orca really returns, pinned on the first real run: task titles come from `task-list`, the worktree from the worker's `workspace`, times from `worker-show`'s dispatch, and a follow-up sent to a worker takes the title of the worker it continues. Before, every worker was role `unknown` and no ticket was listed.
+- Each API message is counted once. A worktree is shared by a ticket's implementer, checker and merger, and a follow-up continues the old session, so a session now goes to the worker chain that started it and is split by time between that chain's dispatches. Before, every worker in a worktree was charged for all of its sessions: the first real run's workers showed $266 against a real $54.
+- Round-one approval no longer needs a verdict in Orca's outcome, which only says the checker finished: a ticket with one check or review dispatch and no fixer was approved in round one.
+- A follow-up to the same implementer is not an escalation; a change of build model is.
+
 ## 0.6.0 - 2026-11-22
 
 ### Features

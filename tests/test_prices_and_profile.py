@@ -110,3 +110,66 @@ class EstimatingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OrcaFieldsAndAttributionTest(unittest.TestCase):
+    """The shapes Orca really returns, pinned on the first real run."""
+
+    def test_worker_record_reads_the_pinned_fields(self):
+        from flowlib import orca
+        raw = {"dispatchId": "ctx_1", "taskId": "task_1", "state": "succeeded",
+               "workspace": "repo-id::/Users/me/orca/workspaces/app/12-thing"}
+        detail = {"dispatch": {"dispatchedAt": "2026-11-22 05:10:40", "completedAt": "2026-11-22T05:25:00.368Z",
+                               "followUpOf": "ctx_0"},
+                  "projection": {"outcome": "succeeded"}, "terminal": {"title": "worker-task_1"}}
+        w = orca.worker_record(raw, detail, {"task_1": "#12 · build · sonnet"})
+        self.assertEqual(w["task_title"], "#12 · build · sonnet")
+        self.assertEqual(w["worktree"], "/Users/me/orca/workspaces/app/12-thing")
+        self.assertEqual(w["started_at"], "2026-11-22T05:10:40+00:00")
+        self.assertEqual(w["ended_at"], "2026-11-22T05:25:00.368Z")
+        self.assertEqual((w["follow_up_of"], w["outcome"]), ("ctx_0", "succeeded"))
+
+    def test_a_session_goes_to_one_chain_and_a_message_to_one_dispatch(self):
+        from flowlib import transcripts
+        wt = "/w/12"
+        workers = [
+            {"dispatch_id": "build", "worktree": wt, "started_at": "2026-11-22T01:00:00+00:00", "follow_up_of": None},
+            {"dispatch_id": "check", "worktree": wt, "started_at": "2026-11-22T02:00:00+00:00", "follow_up_of": None},
+            {"dispatch_id": "fixes", "worktree": wt, "started_at": "2026-11-22T03:00:00+00:00", "follow_up_of": "build"},
+            {"dispatch_id": "other", "worktree": "/w/13", "started_at": "2026-11-22T01:30:00+00:00", "follow_up_of": None},
+        ]
+        sessions = [
+            {"session": "s-build", "worktree": wt, "first_at": "2026-11-22T01:00:05+00:00"},
+            {"session": "s-check", "worktree": wt, "first_at": "2026-11-22T02:00:03+00:00"},
+        ]
+        got = transcripts.assign(workers, sessions)
+        three = transcripts.parse_ts("2026-11-22T03:00:00+00:00")
+        self.assertEqual(got["build"], [("s-build", None, three)])
+        self.assertEqual(got["fixes"], [("s-build", three, None)])
+        self.assertEqual(got["check"], [("s-check", None, None)])
+        self.assertEqual(got["other"], [])
+
+    def test_a_window_counts_only_its_own_messages(self):
+        from flowlib import transcripts
+        def rec(i, at):
+            return {"timestamp": at, "message": {"id": f"m{i}", "model": "claude-sonnet-4-6",
+                                                 "usage": {"input_tokens": 1000000, "output_tokens": 0}}}
+        records = [rec(1, "2026-11-22T01:00:00Z"), rec(2, "2026-11-22T03:00:00Z"), rec(3, "2026-11-22T04:00:00Z")]
+        cut = transcripts.parse_ts("2026-11-22T03:00:00+00:00")
+        before = transcripts.summarise(records, None, cut)
+        after = transcripts.summarise(records, cut, None)
+        self.assertEqual((before["messages"], after["messages"]), (1, 2))
+        self.assertAlmostEqual(before["cost"] + after["cost"], transcripts.summarise(records)["cost"])
+
+    def test_one_check_and_no_fixer_is_a_round_one_approval(self):
+        def w(i, title, outcome="succeeded"):
+            return {"dispatch_id": f"d{i}", "task_title": title, "outcome": outcome, "transcripts": []}
+        p = profiler.build_profile("r", [
+            w(1, "#1 · build · sonnet"), w(2, "#1 · check · haiku"),
+            w(3, "#2 · build · sonnet"), w(4, "#2 · check · haiku"), w(5, "#2 · build · sonnet"), w(6, "#2 · check · haiku"),
+            w(7, "#9 · review · opus"), w(8, "#9 · fix · opus"),
+        ], None, ["#1", "#2"], 4)
+        rows = {t["ticket"]: t for t in p["tickets"]}
+        self.assertEqual([rows[k]["round_one_approved"] for k in ("#1", "#2", "#9")], [True, False, False])
+        self.assertFalse(rows["#2"]["escalated"])
+        self.assertAlmostEqual(p["review_round_one_approval"], 1 / 3)
