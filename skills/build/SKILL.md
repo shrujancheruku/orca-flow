@@ -19,6 +19,7 @@ Read Matt Pocock's `implement-spec` `SKILL.md` (in the `mattpocock-skills` plugi
 - **Frontier.** When a ticket merges into the integration branch, add the `integrated` label (`gh issue edit <n> --add-label integrated`); do not close it. A blocker that is closed or labelled `integrated` counts as satisfied. Recompute the frontier after every merge.
 - **Merging to main.** The founder merges the integration PR. Merge it yourself only when the founder turned automerge on for this run.
 - **Stops, holds, escalation and usage limits** follow `docs/agents/orchestration.md`.
+- **Status footer.** End every turn with the output of `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/status.py --plain`, verbatim, in a fenced `text` block: what is in progress and what waits on the founder. When you ask the founder something, record it then with `status.py --ask "<question>" [--ticket <n>] [--where <where they answer>]`, and clear it with `status.py --done <id>` once answered. It reads GitHub Issues; with the Linear tracker it shows only Orca and the asks.
 
 - **Cleanup.** Once the integration PR is merged, run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup.py --run <run id>` from the repo, read what it would remove and what it keeps and why, then run it with `--apply`. Never remove a run's worktrees with `orca worktree rm`: it hangs and leaves each checkout behind. The script removes them with `git worktree remove`, never forces, and keeps any worktree with uncommitted files or a HEAD on no remote branch. Branches stay.
 
