@@ -8,7 +8,7 @@ You are the implementer for ticket #{{ticket}} in {{repo}}.
 
 Steps:
 
-1. Confirm your branch is based on the tip of `origin/{{integration_branch}}` (`git fetch`; reset onto it if not).
+1. Confirm your branch is based on the tip of `origin/{{integration_branch}}` (`git fetch`; rebase onto it, or stop and escalate if the branch has commits of its own).
 2. Build the ticket test-first. Every acceptance criterion needs a test that fails without the change.
 3. Self-check against each acceptance criterion and the repo's done list (the Verify section of the policy) before reporting.
 4. Merge the tip of `origin/{{integration_branch}}` into your branch, rerun the verify commands, and push your branch.

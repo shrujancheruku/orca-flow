@@ -62,6 +62,8 @@ def build(role: str, values: dict, repo_file: Path | None = None, extra: str | N
     parts = [fill(template(role), values).rstrip()]
     if repo_file is not None and repo_file.is_file():
         parts.append(repo_file.read_text(encoding="utf-8").strip())
+    if role == "review" and extra is not None and not extra.strip():
+        extra = "No carried notes."
     if extra is not None and extra.strip():
         parts.append("## Ticket-specific\n\n" + extra.strip())
     return "\n\n".join(parts) + "\n"

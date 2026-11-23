@@ -39,7 +39,14 @@ class Base(unittest.TestCase):
                 code = exc.code
         return code, out.getvalue(), err.getvalue()
 
+    def empty_file(self):
+        path = Path(self.tmp) / "empty.md"
+        path.write_text("")
+        return str(path)
+
     def brief(self, role, *more):
+        if role == "review" and "--extra" not in more:
+            more += ("--extra", self.empty_file())  # review needs its carried notes, even none
         code, out, err = self.run_cli("--role", role, *ARGS[role], *COMMON, *more)
         self.assertEqual(code, 0, err)
         return out
@@ -85,7 +92,7 @@ class MissingValueTest(Base):
     def test_a_linear_repo_needs_no_github_repo_with_a_ticket_url(self):
         cfg = Path(self.tmp) / "flow.json"
         cfg.write_text('{"tracker": "linear"}')
-        code, out, err = self.run_cli("--config", str(cfg), "--role", "build", "--ticket", "7", "--repo", "acme/app",
+        code, out, err = self.run_cli("--config", str(cfg), "--role", "build", "--ticket", "ABC-7", "--repo", "acme/app",
                                       "--ticket-url", "https://linear.app/x/ABC-7", *COMMON[2:])
         self.assertEqual(code, 0, err)
         self.assertIn("https://linear.app/x/ABC-7", out)
@@ -96,7 +103,8 @@ class MissingValueTest(Base):
             ("check", ["--ticket", "7", "--integration-branch", "i/m", "--tip", "abc"], "--branch"),
             ("check", ["--ticket", "7", "--integration-branch", "i/m", "--branch", "b"], "--tip"),
             ("merge", ["--ticket", "7", "--integration-branch", "i/m"], "--branch"),
-            ("review", ["--integration-branch", "i/m"], "--ticket"),
+            ("review", ["--integration-branch", "i/m", "--extra", self.empty_file()], "--ticket"),
+            ("review", ["--ticket", "45", "--integration-branch", "i/m"], "--extra"),
         ]
         for role, argv, flag in cases:
             with self.subTest(role=role, flag=flag):
@@ -109,6 +117,19 @@ class MissingValueTest(Base):
         code, _, err = self.run_cli("--role", "build", *COMMON)
         self.assertEqual(code, 1)
         self.assertIn("--ticket", err)
+
+    def test_a_linear_id_is_a_ticket_for_a_worker_role_but_not_for_a_pr_role(self):
+        code, _, err = self.run_cli("--role", "fix", "--ticket", "ABC-7", *COMMON)
+        self.assertEqual(code, 1)
+        self.assertIn("ABC-7", err)
+
+    def test_pr_names_the_integration_pr(self):
+        code, out, err = self.run_cli("--role", "fix", "--pr", "#45", "--ticket", "ABC-7", *COMMON)
+        self.assertEqual(code, 0, err)
+        self.assertIn("https://github.com/acme/app/pull/45", out)
+
+    def test_an_empty_extra_for_review_says_no_carried_notes(self):
+        self.assertIn("No carried notes", self.brief("review"))
 
     def test_a_bad_ticket_is_an_error(self):
         code, _, err = self.run_cli("--role", "build", "--ticket", "abc", *COMMON)
@@ -166,13 +187,13 @@ class RulesTest(unittest.TestCase):
 
     def test_build(self):
         self.has("build", "based on the tip of", "test-first", "acceptance criterion", "done list",
-                 "resolution comment", "verbatim last lines", "Merge the tip of", "rerun the verify commands",
+                 "resolution comment", "verbatim last lines", "Merge the tip of", "rerun the verify commands", "stop and escalate if the branch has commits of its own",
                  "Never end a turn waiting on a process that may not exit",
                  "search of the vendor's docs or issues for the exact error")
 
     def test_check(self):
         self.has("check", "read-only", "integration tip to the branch tip", "PASS or FAIL with the file and line",
-                 "**FAIL**", "**FIX-FORWARD**", "another open ticket in the milestone owns is not a deviation",
+                 "**FAIL**", "**FIX-FORWARD**", "Work that another open ticket in the milestone owns is not a deviation",
                  "separate `git worktree` with its own install", "shares installed dependencies",
                  "adversarial question", "quotes the spec", "one comment on the ticket")
 

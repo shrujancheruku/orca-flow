@@ -9,12 +9,12 @@
 
 Pipe it: `brief.py ... | orca orchestration worker-start --spec-file - ...`.
 
---ticket is the issue number, or for review and fix the integration PR's number
+--ticket is the issue number (or a Linear ID like ABC-7 for build, check and merge), or for review and fix the integration PR's number
 (as for route.py); --pr names the PR instead when the ticket is also needed.
 --ticket-url overrides the URL for another tracker. The repo is `github_repo` in
 the config (or --repo). Nothing is read from GitHub or Orca, and nothing is written.
 
---extra <file> (or `-` for stdin) appends the coordinator's ticket-specific text under
+--extra <file> (or `-` for stdin; required for review, where an empty file means none) appends the coordinator's ticket-specific text under
 a heading: the adversarial question for a check, `notes.py --markdown` for a review.
 A repo's own docs/agents/briefs/<role>.md, when present, is appended after the
 template and before the extra text.
@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flowlib import briefs, cli  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
+from flowlib import notes as notes_mod  # noqa: E402
 
 
 def main() -> int:
@@ -51,7 +52,11 @@ def main() -> int:
 
     pr_role = args.role in ("review", "fix")
     try:
-        number = gh_mod.ticket_number(args.pr or args.ticket) if (args.pr or args.ticket) else None
+        if args.pr or pr_role:
+            number = gh_mod.ticket_number(args.pr or args.ticket) if (args.pr or args.ticket) else None
+        else:
+            # A worker's ticket may be a Linear ID (ABC-7); the parsing is notes.py's.
+            number = notes_mod.ticket_ref(args.ticket) if args.ticket else None
     except gh_mod.GitHubError as exc:
         cli.die(str(exc))
     kind = "pull" if pr_role else "issues"
@@ -62,6 +67,9 @@ def main() -> int:
         "round": args.round, "base": args.base,
     }
 
+    if args.role == "review" and args.extra is None:
+        # The review reads its carried notes from the extra text; none must be said, not left out.
+        cli.die("--extra is required for --role review (an empty file means no carried notes)")
     extra = None
     if args.extra:
         try:
