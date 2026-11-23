@@ -26,7 +26,7 @@ BLOCK = "routing"
 # (key, role, model, effort, notes). {size} reads "size" on GitHub and "Estimate" on Linear.
 DEFAULT_ROWS = (
     ("coordinator", "Coordinator", "opus", "medium", "The session running `/flow:build`."),
-    ("scout", "Exploration or scout", "haiku", "low", "A subagent inside a worker."),
+    ("scout", "Exploration or scout", "haiku", None, "A subagent inside a worker."),
     ("build.S", "Implementer, {size} S, no `risk`", "haiku", None, "Escalates once; see Escalation."),
     ("build.S.risk", "Implementer, {size} S, `risk`", "sonnet", "medium", ""),
     ("build.M", "Implementer, {size} M", "sonnet", "medium", ""),
@@ -34,9 +34,9 @@ DEFAULT_ROWS = (
     ("build.L", "Implementer, {size} L", "sonnet", "high", ""),
     ("build.L.risk", "Implementer, {size} L, `risk`", "opus", None, ""),
     ("build.escalated", "Implementer after an escalation", "sonnet", "medium", "A fresh worker on the same branch."),
-    ("merge", "Merger", "haiku", "low", ""),
+    ("merge", "Merger", "haiku", None, ""),
     ("merge.conflict", "Merger on a real conflict", "sonnet", "medium", ""),
-    ("check", "Spec check before a ticket merges into the integration branch", "haiku", "low", "One per ticket."),
+    ("check", "Spec check before a ticket merges into the integration branch", "haiku", None, "One per ticket."),
     ("review", "Integration `code-review`, once per milestone", "opus", None, ""),
     ("review.risk", "Integration `code-review`, milestone has `risk` tickets", "opus", None,
      "Same as `review`; kept so `--risk` resolves."),
@@ -49,7 +49,15 @@ DEFAULT_ROWS = (
 PAST_DEFAULTS = {
     "review": [("sonnet", "high")],
     "fix": [("sonnet", "medium")],
+    # Haiku takes no effort: Orca refuses `--model haiku --effort low` and the worker never starts.
+    "scout": [("haiku", "low")],
+    "merge": [("haiku", "low")],
+    "check": [("haiku", "low")],
 }
+
+# Model ids that take no effort setting. Orca rejects worker-start outright when
+# one is passed, so the flag is left off even when a repo's own row names one.
+NO_EFFORT = ("haiku",)
 
 SET_NOTE = "Set in `flow.json`."
 FOOTER = ("The flow plugin writes this table from its defaults and from `routing` in `docs/agents/flow.json`. "
@@ -286,9 +294,18 @@ def worker_flags(choice: dict, models: dict) -> list:
     except agents.AgentError as exc:
         raise RoutingError(f"row {choice.get('key', '?')!r}: {exc}") from exc
     flags = ["--agent", prof["agent"], "--model", prof["model"]]
-    if choice.get("effort"):
+    if choice.get("effort") and not takes_no_effort(choice, models):
         flags += ["--effort", choice["effort"]]
     return flags
+
+
+def takes_no_effort(choice: dict, models: dict) -> bool:
+    """True when the row's model (by its profile name or its model id) takes no effort setting."""
+    try:
+        model = agents.profile(choice["model"], models)["model"]
+    except agents.AgentError:
+        model = ""
+    return any(word in f"{choice['model']} {model}".lower() for word in NO_EFFORT)
 
 
 def ticket_id(ref) -> str:

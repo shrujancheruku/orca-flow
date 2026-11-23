@@ -15,14 +15,14 @@ class RoutingTest(unittest.TestCase):
 
     def test_seeded_table(self):
         self.assertEqual(self.pick("coordinator"), ("opus", "medium"))
-        self.assertEqual(self.pick("scout"), ("haiku", "low"))
+        self.assertEqual(self.pick("scout"), ("haiku", None))
         self.assertEqual(self.pick("build", size="S"), ("haiku", None))
         self.assertEqual(self.pick("build", size="M"), ("sonnet", "medium"))
         self.assertEqual(self.pick("build", size="L"), ("sonnet", "high"))
         self.assertEqual(self.pick("build", size="L", risk=True), ("opus", None))
-        self.assertEqual(self.pick("merge"), ("haiku", "low"))
+        self.assertEqual(self.pick("merge"), ("haiku", None))
         self.assertEqual(self.pick("merge", variant="conflict")[0], "sonnet")
-        self.assertEqual(self.pick("check"), ("haiku", "low"))
+        self.assertEqual(self.pick("check"), ("haiku", None))
         self.assertEqual(self.pick("review"), ("opus", None))
         self.assertEqual(self.pick("review", risk=True)[0], "opus")
         self.assertEqual(self.pick("fix"), ("opus", None))
@@ -33,13 +33,13 @@ class RoutingTest(unittest.TestCase):
         and adding the old value to PAST_DEFAULTS so hand-kept tables follow."""
         got = {k: (v["model"], v["effort"]) for k, v in self.table.items()}
         self.assertEqual(got, {
-            "coordinator": ("opus", "medium"), "scout": ("haiku", "low"),
+            "coordinator": ("opus", "medium"), "scout": ("haiku", None),
             "build.s": ("haiku", None), "build.s.risk": ("sonnet", "medium"),
             "build.m": ("sonnet", "medium"), "build.m.risk": ("sonnet", "high"),
             "build.l": ("sonnet", "high"), "build.l.risk": ("opus", None),
             "build.escalated": ("sonnet", "medium"),
-            "merge": ("haiku", "low"), "merge.conflict": ("sonnet", "medium"),
-            "check": ("haiku", "low"), "review": ("opus", None), "review.risk": ("opus", None),
+            "merge": ("haiku", None), "merge.conflict": ("sonnet", "medium"),
+            "check": ("haiku", None), "review": ("opus", None), "review.risk": ("opus", None),
             "fix": ("opus", None),
         })
 
@@ -66,6 +66,22 @@ class RoutingTest(unittest.TestCase):
         c = routing.select(self.table, "build", size="M")
         self.assertEqual(routing.worker_flags(c, {"sonnet": "claude-sonnet-x"}),
                          ["--agent", "claude", "--model", "claude-sonnet-x", "--effort", "medium"])
+
+    def test_haiku_never_gets_an_effort_flag(self):
+        # Orca refuses `--model haiku --effort low`, so the worker would never start.
+        for key in ("scout", "merge", "check"):
+            self.assertEqual(routing.worker_flags(routing.select(self.table, key), {"haiku": "claude-haiku-x"}),
+                             ["--agent", "claude", "--model", "claude-haiku-x"])
+        own = routing.effective({"check": {"model": "haiku", "effort": "low"}})
+        c = routing.select(own, "check")
+        self.assertTrue(routing.takes_no_effort(c, {"haiku": "claude-haiku-x"}))
+        self.assertEqual(routing.worker_flags(c, {"haiku": "claude-haiku-x"}),
+                         ["--agent", "claude", "--model", "claude-haiku-x"])
+        self.assertFalse(routing.takes_no_effort(routing.select(self.table, "build", size="M"), {"sonnet": "sonnet"}))
+
+    def test_a_hand_kept_haiku_low_row_follows_the_new_default(self):
+        self.assertEqual(routing.legacy_overrides({"check": {"model": "haiku", "effort": "low"},
+                                                   "merge": {"model": "haiku", "effort": "low"}}), {})
 
     def test_a_profile_can_name_another_agent(self):
         table = routing.parse_table(
@@ -198,7 +214,7 @@ class DefaultsFollowReleasesTest(unittest.TestCase):
 
     def test_no_doc_is_fine(self):
         table, warnings = routing.resolve({}, None)
-        self.assertEqual((self.pick(table, "merge"), warnings), (("haiku", "low"), []))
+        self.assertEqual((self.pick(table, "merge"), warnings), (("haiku", None), []))
 
     def test_linear_reads_estimate(self):
         self.assertIn("Implementer, Estimate S, no `risk`", routing.render(routing.effective(None, "Estimate")))

@@ -2,6 +2,15 @@
 
 This project follows [Semantic Versioning](https://semver.org/).
 
+## 0.9.1 - 2026-11-23
+
+### Fixes
+
+- `route.py` no longer passes `--effort` for Haiku. Orca refuses `worker-start --model haiku --effort low` ("does not support effort low"), so every `check`, `merge` and scout worker failed to start until the coordinator dropped the flag by hand. The default rows for `scout`, `merge` and `check` now have no effort, a hand-kept table still holding `haiku`/`low` follows them, and a repo's own Haiku row that names an effort is routed without the flag and warned about. Run `seed_docs.py --apply` to refresh the table in `orchestration.md`.
+- `/flow:build` has a "Before ready" rule: after the integration review's fixes land, the coordinator waits for the integration PR's checks on the final tip, sends a red check back as another fix round, and has a merger bring the base branch in when the PR is behind or in conflict, before the profiler runs and the PR is marked ready. On the first run without it, a fix round that passed locally hung a CI job, and the PR came out behind a strict ruleset.
+- The status footer says "ready for you to merge" only when the integration PR can be merged. A PR with a red or pending check, or one behind or in conflict with its base, reads "not ready to merge yet" with the reason.
+- The status footer's tally counts workers on the integration PR (review, fix, merge) or outside the milestone's tickets. Before, it read "0 in progress" under a live fix worker.
+
 ## 0.9.0 - 2026-11-22
 
 ### Features
