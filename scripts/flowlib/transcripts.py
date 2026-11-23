@@ -18,9 +18,12 @@ def parse_ts(value):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        ts = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    # A stamp with no offset is read as UTC: Claude Code writes UTC, and a naive time cannot be
+    # compared with an aware one, so one such line would crash the sort of a run's times.
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
 
 
 def encode_project_dir(path: str) -> str:
@@ -50,6 +53,13 @@ def collect(records, scope: str = ""):
     (requests, order, times, usage_lines): requests maps key to
     (model, usage, timestamp), order is the keys in first-seen order, times the
     timestamps of every record, usage_lines how many lines carried usage.
+
+    A repeated id keeps its first copy, the same rule summarise_files uses across
+    files, so the totals do not depend on which copy comes last. The copies carry
+    the same usage in the transcripts seen so far.
+
+    Latent: a message with no id is keyed by file and line, so a resumed session
+    that repeats one in a later file counts it again. Transcripts carry ids today.
     """
     requests, order, times, usage_lines = {}, [], [], 0
     for i, rec in enumerate(records):
@@ -62,7 +72,7 @@ def collect(records, scope: str = ""):
             key = msg.get("id") or f"{scope}line-{i}"
             if key not in requests:
                 order.append(key)
-            requests[key] = (msg.get("model") or "", msg["usage"], ts)
+                requests[key] = (msg.get("model") or "", msg["usage"], ts)
     return requests, order, times, usage_lines
 
 
@@ -136,12 +146,18 @@ def summarise_files(paths) -> tuple:
     is None when no path was left.
     """
     requests, order, times = {}, [], []
-    counted, missing = [], []
+    counted, missing, seen = [], [], set()
     for path in paths:
         p = Path(path)
         if not p.is_file():
             missing.append(str(path))
             continue
+        # One file named twice, or in two spellings (a/x.jsonl, b/../a/x.jsonl), is one session;
+        # the resolved path is also the scope of its id-less messages, so they are not counted again.
+        p = p.resolve()
+        if p in seen:
+            continue
+        seen.add(p)
         with open(p, encoding="utf-8", errors="replace") as fh:
             got, got_order, got_times, usage_lines = collect(read_jsonl(fh), scope=f"{p}:")
         if not usage_lines:

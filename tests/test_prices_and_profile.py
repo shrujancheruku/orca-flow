@@ -215,6 +215,39 @@ class CoordinatorSessionsTest(unittest.TestCase):
         self.assertEqual(s["messages"], 3)
         self.assertAlmostEqual(s["cost"], 3 * (1000 * 1 + 100 * 5) / 1e6)
 
+    def test_one_transcript_given_twice_counts_once_in_any_spelling(self):
+        # no id on the message, so it is keyed by path and line: a second spelling must not count it again
+        plain = {"timestamp": "2026-11-10T10:01:00Z",
+                 "message": {"model": "claude-haiku-4-5", "usage": {"input_tokens": 1000, "output_tokens": 100}}}
+        a = self.write("a.jsonl", rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z"), plain)
+        (self.dir / "t").mkdir()
+        other_spelling = str(self.dir / "t" / ".." / "a.jsonl")
+        once, _ = transcripts.summarise_files([a])
+        for paths in ([a, a], [a, other_spelling]):
+            with self.subTest(paths=paths):
+                s, missing = transcripts.summarise_files(paths)
+                self.assertEqual(missing, [])
+                self.assertEqual((s["sessions"], s["messages"]), (1, 2))
+                self.assertAlmostEqual(s["cost"], once["cost"])
+
+    def test_a_repeated_id_keeps_its_first_copy_in_one_file_as_across_files(self):
+        first = rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z", inp=1000)
+        second = rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z", inp=5000)
+        one = transcripts.summarise(transcripts.read_jsonl([json.dumps(first), json.dumps(second)]))
+        a = self.write("a.jsonl", first)
+        b = self.write("b.jsonl", second)
+        two, _ = transcripts.summarise_files([a, b])
+        self.assertEqual(one["by_model"]["claude-haiku-4-5"]["input"], 1000)
+        self.assertEqual(two["by_model"]["claude-haiku-4-5"]["input"], 1000)
+
+    def test_naive_and_aware_timestamps_mix_as_utc(self):
+        aware = self.write("aware.jsonl", rec("m1", "claude-haiku-4-5", "2026-01-01T00:01:00Z"))
+        naive = self.write("naive.jsonl", rec("m2", "claude-haiku-4-5", "2026-01-01T00:02:00"))
+        s, _ = transcripts.summarise_files([naive, aware])
+        self.assertEqual(s["messages"], 2)
+        self.assertEqual(s["first_at"], "2026-01-01T00:01:00+00:00")
+        self.assertEqual(s["last_at"], "2026-01-01T00:02:00+00:00")
+
     def test_context_series_runs_in_time_order_across_files(self):
         late = self.write("late.jsonl", rec("m2", "claude-haiku-4-5", "2026-11-10T12:00:00Z"))
         early = self.write("early.jsonl", rec("m1", "claude-haiku-4-5", "2026-11-10T09:00:00Z"))
