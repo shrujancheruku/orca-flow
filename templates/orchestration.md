@@ -28,7 +28,7 @@ Put the model in the Orca task title: `#123 · build · haiku`. The profiler rea
 
 1. `orca reference find https://github.com/{{REPO}}/issues/<n> --json` first. If a workspace or agent is already attached to the issue, resume or read it instead of starting another. (Orca wants the issue URL; a bare number is not supported.)
 2. `orca worktree create --issue <n> --name "<n>-<slug>" --base-branch integration/<milestone-slug> --no-parent --json` makes the ticket's worktree and links it to the issue.
-3. `orca orchestration worker-start --worktree issue:<n> --task-title "<task_title from route.py>" <flags from route.py> --spec-file -`, with the brief on stdin. The brief holds context pointers: the issue URL, the spec, the exploration notes, the integration branch.
+3. `orca orchestration worker-start --worktree issue:<n> --task-title "<task_title from route.py>" <flags from route.py> --spec-file -`, with the brief on stdin, printed by `python3 {{FLOW_SCRIPTS}}/brief.py --role <role> --ticket <n> --integration-branch <branch>` (see "Briefs" in the build skill). The brief holds context pointers: the issue URL, the spec, the exploration notes, the integration branch.
 
 The merger, checker, fixer and reviewer start the same way: a `--task-title` of the shape `#<n> · <role> · <model>`, and the flags from `route.py`.
 

@@ -54,6 +54,17 @@ class SeedDocsTest(unittest.TestCase):
             out = seed_docs.template(name, vals)
             self.assertNotIn("{{", out, name)
 
+    def test_this_repos_policy_matches_the_template_on_the_build_rules(self):
+        # seed_docs.py rewrites only the routing table, so this repo's own copy is kept in line by hand
+        seeded = seed_docs.template("orchestration.md", seed_docs.values(cfg()))
+        ours = (Path(__file__).resolve().parent.parent / "docs" / "agents" / "orchestration.md").read_text()
+        for phrase in ("it is not merged, except a paperwork-only miss the coordinator rules accepted",
+                       "[--coordinator <another coordinator transcript> ...]",
+                       "${CLAUDE_PLUGIN_ROOT}/scripts/brief.py --role <role>"):
+            for name, text in (("template", seeded), ("docs/agents/orchestration.md", ours)):
+                with self.subTest(doc=name, phrase=phrase):
+                    self.assertIn(phrase, text)
+
     def test_seeded_docs_name_no_machine_path(self):
         out = seed_docs.template("orchestration.md", seed_docs.values(cfg()))
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/scripts/route.py", out)
