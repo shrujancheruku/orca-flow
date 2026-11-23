@@ -7,6 +7,7 @@ Read when `docs/agents/flow.json` says `"tracker": "linear"`. Everything in `ski
 - **Routing.** `python3 ${CLAUDE_PLUGIN_ROOT}/adapters/linear/scripts/route_linear.py --role <role> --ticket <ABC-123> --lookup`. Size comes from the Linear Estimate.
 - **Tracker.** Read and write tickets with `orca linear`, as `docs/agents/issue-tracker.md` says.
 - **Rulings.** Same as "Rulings" in `skills/build/SKILL.md`: a `check` that fails only on paperwork, with every behaviour criterion passed, may be ruled accepted: comment the ruling on the ticket, record the miss with `notes.py --add "<text>" --ticket <ABC-123>`, and merge; anything else goes back to the implementer. The review brief includes `notes.py --markdown`, and the fixer clears each note with `notes.py --done <id>`.
+- **Briefs.** Same as "Briefs" in `skills/build/SKILL.md`: start every worker from `scripts/brief.py` and the templates in `templates/briefs/`. Pass `--repo <owner/name>` for the integration PR's repo and `--ticket-url <the Linear issue URL>` in place of a GitHub URL; a fix or re-check round is a fresh `worker-start`.
 - **Frontier.** A blocker that is In Review counts as satisfied. Move a ticket to In Review when its work lands on the integration branch, then recompute the frontier.
 - **Integration PR.** One integration branch and one draft PR per milestone. The PR body has a `Fixes <ticket>` line per ticket.
 - **Profile.** Run `profile.py`, then post the summary with `adapters/linear/scripts/project_update.py --profile profile-<run>.json --project <project id> --apply`.
