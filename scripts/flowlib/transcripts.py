@@ -42,31 +42,37 @@ def read_jsonl(lines):
             yield rec
 
 
-def summarise(records, start=None, end=None) -> dict:
-    """Usage and cost of one transcript, given its parsed records.
+def collect(records, scope: str = ""):
+    """The API messages in `records`, each once, keyed by message id.
 
-    With `start` or `end`, only the API messages stamped in [start, end) count,
-    so one session shared by several dispatches can be split between them. A
-    message with no timestamp counts only when there is no `start`.
+    A message with no id is keyed by its line number, prefixed with `scope`
+    (the file name) so two files' line 7s do not collide. Returns
+    (requests, order, times, usage_lines): requests maps key to
+    (model, usage, timestamp), order is the keys in first-seen order, times the
+    timestamps of every record, usage_lines how many lines carried usage.
     """
-    requests = {}
-    order = []
-    times = []
+    requests, order, times, usage_lines = {}, [], [], 0
     for i, rec in enumerate(records):
         ts = parse_ts(rec.get("timestamp"))
         if ts:
             times.append(ts)
         msg = rec.get("message")
         if isinstance(msg, dict) and isinstance(msg.get("usage"), dict):
-            key = msg.get("id") or f"line-{i}"
+            usage_lines += 1
+            key = msg.get("id") or f"{scope}line-{i}"
             if key not in requests:
                 order.append(key)
             requests[key] = (msg.get("model") or "", msg["usage"], ts)
+    return requests, order, times, usage_lines
+
+
+def _summarise_requests(requests, order, times, start=None, end=None, sessions=1) -> dict:
     by_model = {}
     unpriced = set()
     contexts = []
     total = 0.0
-    for key in order:
+    # Contexts run in time order: a resumed session's transcript can sort after a later one in the list.
+    for key in sorted(order, key=lambda k: requests[k][2].timestamp() if requests[k][2] else float("-inf")):
         model, usage, ts = requests[key]
         if model == "<synthetic>":
             continue
@@ -89,16 +95,28 @@ def summarise(records, start=None, end=None) -> dict:
                 "prompt": tokens["input"] + tokens["cache_read"] + tokens["cache_write"],
             }
         )
-    times.sort()
+    times = sorted(times)
     return {
         "cost": total,
         "by_model": by_model,
         "unpriced_models": sorted(unpriced),
         "messages": len(contexts),
         "contexts": contexts,
+        "sessions": sessions,
         "first_at": times[0].isoformat() if times else None,
         "last_at": times[-1].isoformat() if times else None,
     }
+
+
+def summarise(records, start=None, end=None) -> dict:
+    """Usage and cost of one transcript, given its parsed records.
+
+    With `start` or `end`, only the API messages stamped in [start, end) count,
+    so one session shared by several dispatches can be split between them. A
+    message with no timestamp counts only when there is no `start`.
+    """
+    requests, order, times, _ = collect(records)
+    return _summarise_requests(requests, order, times, start, end)
 
 
 def summarise_file(path, start=None, end=None) -> dict:
@@ -106,6 +124,40 @@ def summarise_file(path, start=None, end=None) -> dict:
         out = summarise(read_jsonl(fh), start, end)
     out["path"] = str(path)
     return out
+
+
+def summarise_files(paths) -> tuple:
+    """Usage across several transcripts of one run, a message counted once. Returns (summary, missing).
+
+    A run spans several coordinator sessions, each its own transcript, and a
+    resumed session repeats the messages before it, so a message seen in more
+    than one file is counted the first time only. `missing` names the paths that
+    do not exist or hold no usage; they are left out of the sum, and the summary
+    is None when no path was left.
+    """
+    requests, order, times = {}, [], []
+    counted, missing = [], []
+    for path in paths:
+        p = Path(path)
+        if not p.is_file():
+            missing.append(str(path))
+            continue
+        with open(p, encoding="utf-8", errors="replace") as fh:
+            got, got_order, got_times, usage_lines = collect(read_jsonl(fh), scope=f"{p}:")
+        if not usage_lines:
+            missing.append(str(path))
+            continue
+        counted.append(str(path))
+        times.extend(got_times)
+        for key in got_order:
+            if key not in requests:
+                requests[key] = got[key]
+                order.append(key)
+    if not counted:
+        return None, missing
+    out = _summarise_requests(requests, order, times, sessions=len(counted))
+    out["paths"] = counted
+    return out, missing
 
 
 def files_for_worktree(worktree: str, projects_root: Path) -> list:

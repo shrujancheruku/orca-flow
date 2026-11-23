@@ -146,6 +146,7 @@ def build_profile(run_id: str, workers: list, coordinator: dict | None, merged: 
         "run_id": run_id,
         "total_cost": total,
         "coordinator_cost": coordinator["cost"] if coordinator else None,
+        "coordinator_sessions": (coordinator.get("sessions", 1) if coordinator else 0),
         "by_model": by_model,
         "by_role": dict(by_role),
         "merged_tickets": len(merged_rows),
@@ -169,11 +170,19 @@ def summary_body(profile: dict, prices_as_of: str) -> str:
     def pct(v):
         return "n/a" if v is None else f"{v * 100:.0f}%"
 
+    # A run has several coordinator sessions; the line says how many were summed, or that none was,
+    # rather than print a total that leaves the coordinator out without saying so.
+    sessions = profile.get("coordinator_sessions") or 0
+    if profile.get("coordinator_cost") is None or not sessions:
+        coordinator = "coordinator not counted"
+    else:
+        coordinator = (f"coordinator {money(profile['coordinator_cost'])} over {sessions} "
+                       f"session{'' if sessions == 1 else 's'}")
     lines = [
         f"**Run {profile['run_id']}**: cost profile (API list-price proxy, prices as of {prices_as_of}).",
         "",
         f"- Merged tickets: {profile['merged_tickets']}, {money(profile['cost_per_merged_ticket'])} each.",
-        f"- Total: {money(profile['total_cost'])}; coordinator {money(profile['coordinator_cost'])}.",
+        f"- Total: {money(profile['total_cost'])}; {coordinator}.",
         f"- Escalations: {profile['escalations']}. Round-one review approval: {pct(profile['review_round_one_approval'])}.",
         f"- Slot use: {pct(profile['slots']['utilisation'])} of {profile['slots']['slots']} slots, peak {profile['slots']['peak_concurrency']}.",
     ]

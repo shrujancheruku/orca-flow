@@ -101,7 +101,7 @@ A worker stops and reports with `orca orchestration send --type escalation` for 
 At the end of each milestone, run:
 
 ```
-python3 {{FLOW_SCRIPTS}}/profile.py --run <run id> --coordinator <coordinator transcript> --pr <integration PR number> --apply
+python3 {{FLOW_SCRIPTS}}/profile.py --run <run id> --coordinator <coordinator transcript> [--coordinator <another coordinator transcript> ...] --pr <integration PR number> --apply
 ```
 
 Read the HTML it writes. `--pr ... --apply` has the coordinator post the summary as a comment on the integration PR. The profile is unverified until the first real run.
