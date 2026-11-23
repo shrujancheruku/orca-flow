@@ -290,7 +290,7 @@ def worker_questions(messages: list, gates: list, tasks: list, run_id: str) -> l
 # -- GitHub -------------------------------------------------------------------
 
 ISSUE_FIELDS = "number title state labels(first: 30) { nodes { name } }"
-PR_FIELDS = """number title state isDraft headRefName milestone { title }
+PR_FIELDS = """number title state isDraft mergeStateStatus headRefName milestone { title }
   commits(last: 1) { nodes { commit { statusCheckRollup { state
     contexts(first: 100) { nodes { __typename ... on CheckRun { status conclusion } ... on StatusContext { state } } }
   } } } }"""
@@ -470,7 +470,13 @@ def waiting(gh_data: dict, labels: dict, asks: list, questions: list, tly) -> li
             c = check_counts(pr)
             why = "every milestone ticket integrated" if all_in else "no longer draft"
             draft = ", still draft" if pr.get("isDraft") else ""
-            sections["pr"] = [f"PR #{pr['number']} ready for you to merge ({why}{draft}): "
+            # "Ready to merge" only when it can be merged: a red or running check, or a branch
+            # behind or in conflict with its base, is the coordinator's to clear first.
+            merge_state = {"BEHIND": "behind its base", "DIRTY": "conflicts with its base"}.get(pr.get("mergeStateStatus"))
+            blocks = [b for b in (merge_state, f"{c['red']} red" if c["red"] else "",
+                                  f"{c['pending']} pending" if c["pending"] else "") if b]
+            verdict = f"not ready to merge yet: {', '.join(blocks)}" if blocks else "ready for you to merge"
+            sections["pr"] = [f"PR #{pr['number']} {verdict} ({why}{draft}): "
                               f"checks {c['green']} green, {c['red']} red, {c['pending']} pending"]
     out = []
     for sid, _, _ in SECTIONS:
@@ -521,7 +527,14 @@ def build(*, cfg, run_id=None, milestone=None, pr=None, asks_file: Path, orca_ru
 
     live_tickets = {r["ticket"] for r in rows if r["ticket"]}
     tly = tally(gh_data["issues"], live_tickets, labels) if gh_data["issues"] is not None else None
+    # Review, fix and merge workers run on the integration PR's number, which is no milestone
+    # ticket: without this the tally reads "0 in progress" under a live worker.
+    off_ticket = 0
+    if gh_data["issues"] is not None:
+        numbers = {f"#{i['number']}" for i in gh_data["issues"]}
+        off_ticket = sum(1 for r in rows if r["ticket"] not in numbers)
     return {"run": run["run"], "milestone": gh_data.get("milestone"), "in_progress": rows, "tally": tly,
+            "off_ticket_workers": off_ticket,
             "waiting": waiting(gh_data, labels, kept, questions, tly), "unavailable": [clean(u) for u in unavailable]}
 
 
@@ -535,6 +548,9 @@ def worker_line(r: dict) -> str:
 def tally_line(data: dict) -> str:
     t = data["tally"]
     extra = f", {t['other']} other" if t.get("other") else ""
+    n = data.get("off_ticket_workers") or 0
+    if n:
+        extra += f"; {n} worker{'s' if n > 1 else ''} on the integration PR or outside the tickets"
     return clean(f"{cut(data['milestone'] or 'milestone', 40)}: {t['integrated']}/{t['total']} integrated, "
                  f"{t['in_progress']} in progress, {t['ready_next']} ready next, {t['blocked']} blocked, "
                  f"{t['waiting_on_you']} waiting on you{extra}")

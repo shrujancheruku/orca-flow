@@ -44,10 +44,11 @@ def issue(n, title, labels=(), state="OPEN", blockers=(), milestone=None):
     return node
 
 
-def pr_node(n=50, draft=True, milestone="M1", checks=("SUCCESS",), state="OPEN"):
+def pr_node(n=50, draft=True, milestone="M1", checks=("SUCCESS",), state="OPEN", merge_state="CLEAN"):
     contexts = [{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": c} if c != "IN_PROGRESS"
                 else {"__typename": "CheckRun", "status": "IN_PROGRESS", "conclusion": None} for c in checks]
-    return {"number": n, "title": "feat: m1", "state": state, "isDraft": draft, "headRefName": "integration/m1",
+    return {"number": n, "title": "feat: m1", "state": state, "isDraft": draft, "mergeStateStatus": merge_state,
+            "headRefName": "integration/m1",
             "milestone": {"title": milestone},
             "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS", "contexts": {"nodes": contexts}}}}]}}
 
@@ -163,6 +164,15 @@ class InProgressTest(Base):
         self.assertIn("M1: 2/7 integrated, 1 in progress, 1 ready next, 1 blocked, 2 waiting on you",
                       self.plain(data))
 
+    def test_a_worker_on_the_integration_pr_shows_beside_the_tally(self):
+        tasks = [task("t50", "#50 · fix · opus", "dispatched", created="2026-11-22 11:50:00")]
+        workers = [{"dispatchId": "d", "taskId": "t50", "state": "running", "liveness": "live"}]
+        data = self.build(fake_orca(workers, tasks), fake_gh(milestone_issues=[issue(1, "a", ["integrated"])]),
+                          milestone="M1")
+        self.assertEqual(data["tally"]["in_progress"], 0)
+        self.assertIn("M1: 1/1 integrated, 0 in progress, 0 ready next, 0 blocked, 0 waiting on you; "
+                      "1 worker on the integration PR or outside the tickets", self.plain(data))
+
 
 class WaitingTest(Base):
     def test_nothing(self):
@@ -261,13 +271,18 @@ class PrTest(Base):
         self.assertEqual(data["milestone"], "M1")  # taken from the PR, with a second read for its issues
         self.assertEqual(len(gh.queries), 2)
         self.assertEqual(data["waiting"][-1]["items"], [
-            "PR #50 ready for you to merge (every milestone ticket integrated, still draft): "
+            "PR #50 not ready to merge yet: 1 red, 1 pending (every milestone ticket integrated, still draft): "
             "checks 2 green, 1 red, 1 pending"])
 
     def test_out_of_draft_is_ready(self):
         data = self.build(gh_runner=fake_gh(prs=[pr_node(draft=False)]), milestone="M1")
         self.assertEqual(data["waiting"][-1]["items"],
                          ["PR #50 ready for you to merge (no longer draft): checks 1 green, 0 red, 0 pending"])
+
+    def test_a_pr_behind_its_base_is_not_ready(self):
+        data = self.build(gh_runner=fake_gh(prs=[pr_node(draft=False, merge_state="BEHIND")]), milestone="M1")
+        self.assertEqual(data["waiting"][-1]["items"], [
+            "PR #50 not ready to merge yet: behind its base (no longer draft): checks 1 green, 0 red, 0 pending"])
 
     def test_only_integration_branches_in_the_milestone_count(self):
         other = dict(pr_node(51, draft=False), headRefName="renovate/x")

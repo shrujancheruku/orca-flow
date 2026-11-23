@@ -70,6 +70,9 @@ def main() -> None:
         warnings += stale
         choice = routing.select(table, args.role, size=size, risk=risk, variant=args.variant)
         flags = routing.worker_flags(choice, cfg["models"])
+        if choice.get("effort") and routing.takes_no_effort(choice, cfg["models"]):
+            warnings.append(f"row {choice['key']}: {choice['model']} takes no effort, so --effort {choice['effort']} "
+                            "is left off (Orca refuses it); clear the row's effort")
     except (OSError, routing.RoutingError) as exc:
         cli.die(str(exc))
     if args.shell:
