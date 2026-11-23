@@ -261,6 +261,27 @@ class AsksTest(Base):
         self.assertEqual(path, Path(os.path.realpath(repo)) / ".git" / "flow" / "asks.jsonl")
 
 
+class NotesFooterTest(Base):
+    def line(self, notes_file):
+        issues = [issue(1, "a", ["integrated"]), issue(2, "b", ["ready-for-agent"])]
+        data = status.build(cfg=cfg(), asks_file=self.asks, notes_file=notes_file, orca_runner=fake_orca(),
+                            gh=github.Gh("acme/app", runner=fake_gh(milestone_issues=issues)), now=NOW, milestone="M1")
+        return status.tally_line(data)
+
+    def test_the_tally_counts_carried_notes_only_when_there_are_some(self):
+        from flowlib import notes
+        path = Path(self.tmp) / "flow" / "notes.jsonl"
+        self.assertNotIn("note", self.line(path))
+        self.assertNotIn("note", self.line(None))
+        a = notes.add(path, "one", ticket=1)
+        self.assertTrue(self.line(path).endswith("; 1 note carried to the review"), self.line(path))
+        for n in range(3):
+            notes.add(path, f"more {n}", ticket=2)
+        self.assertTrue(self.line(path).endswith("; 4 notes carried to the review"), self.line(path))
+        notes.done(path, a)
+        self.assertIn("3 notes carried", self.line(path))
+
+
 class PrTest(Base):
     def test_a_draft_pr_is_not_ready_until_every_ticket_is_integrated(self):
         gh = fake_gh(prs=[pr_node(draft=True)], milestone_issues=[issue(1, "a", ["integrated"]), issue(2, "b")])

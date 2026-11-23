@@ -63,7 +63,7 @@ Blockers are the issue's native dependencies (`gh api repos/{{REPO}}/issues/<n>/
 
 - A build milestone is a GitHub Milestone. Its tickets carry that milestone.
 - One integration branch (`integration/<milestone-slug>`) and one draft PR into main per milestone. Open the draft after the first merge, with `--milestone`.
-- The Haiku `check` worker passes a ticket before it merges into the integration branch. A failed check goes back to the implementer; it is not merged.
+- The Haiku `check` worker passes a ticket before it merges into the integration branch. A failed check goes back to the implementer; it is not merged, except a paperwork-only miss the coordinator rules accepted and records with `notes.py --add` (see "Rulings" in the build skill).
 - A ticket merged into the integration branch gets the `{{INTEGRATED_LABEL}}` label (`gh issue edit <n> --add-label {{INTEGRATED_LABEL}}`). Do not close it.
 - The integration PR body has one `Closes #<n>` line per ticket, kept current as tickets land. When the founder merges the PR into main, GitHub closes those tickets.
 - The founder merges integration PRs.
