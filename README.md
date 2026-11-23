@@ -91,7 +91,7 @@ Every per-repo value is in `docs/agents/flow.json`: `tracker`, `github_repo`, th
 
 ## Scripts
 
-All in `scripts/`. Each that writes is a dry run until you pass `--apply`, and each is safe to rerun.
+All in `scripts/`. Each that writes is a dry run until you pass `--apply`, and each is safe to rerun. `notes.py --add/--done` and `status.py --ask/--done` are exempt: they write only the local bookkeeping files under `<git common dir>/flow/` (`notes.jsonl`, `asks.jsonl`), never the repo's tracked files or GitHub, so they need no `--apply`.
 
 | Script | Does |
 | --- | --- |

@@ -139,6 +139,8 @@ A ticket's proof is a resolution comment on the ticket: each criterion beside th
 
 The `check` worker and the integration review read `CLAUDE.md`, `README.md` and the ticket. They check that every criterion has a test that fails without the change, that nothing outside the standard library is imported, that a writing script stays a dry run without `--apply`, that the README and changelog match the behaviour, that the Linear adapter was considered, and that no version was bumped.
 
+`notes.py --add/--done` and `status.py --ask/--done` are exempt: they write only the local bookkeeping files under `<git common dir>/flow/` (`notes.jsonl`, `asks.jsonl`), never the repo's tracked files or GitHub, so they need no `--apply`.
+
 ## Profiling
 
 At the end of each milestone, run:

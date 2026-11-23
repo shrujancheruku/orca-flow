@@ -60,7 +60,9 @@ class SeedDocsTest(unittest.TestCase):
         ours = (Path(__file__).resolve().parent.parent / "docs" / "agents" / "orchestration.md").read_text()
         for phrase in ("it is not merged, except a paperwork-only miss the coordinator rules accepted",
                        "[--coordinator <another coordinator transcript> ...]",
-                       "${CLAUDE_PLUGIN_ROOT}/scripts/brief.py --role <role>"):
+                       "${CLAUDE_PLUGIN_ROOT}/scripts/brief.py --role <role>",
+                       "`notes.py --add/--done` and `status.py --ask/--done` are exempt: they write only the local "
+                       "bookkeeping files under `<git common dir>/flow/`"):
             for name, text in (("template", seeded), ("docs/agents/orchestration.md", ours)):
                 with self.subTest(doc=name, phrase=phrase):
                     self.assertIn(phrase, text)

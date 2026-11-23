@@ -96,6 +96,10 @@ A worker stops and reports with `orca orchestration send --type escalation` for 
 - `verify-outside-ticket`: proof needs work outside the ticket.
 - `already-done`: the work is already on the integration branch.
 
+## Review checks
+
+The `check` worker and the integration review apply the rules in `CLAUDE.md`. A script that writes stays a dry run without `--apply`. `notes.py --add/--done` and `status.py --ask/--done` are exempt: they write only the local bookkeeping files under `<git common dir>/flow/` (`notes.jsonl`, `asks.jsonl`), never the repo's tracked files or GitHub, so they need no `--apply`.
+
 ## Profiling
 
 At the end of each milestone, run:
