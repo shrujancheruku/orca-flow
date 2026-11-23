@@ -9,13 +9,15 @@
 
 Pipe it: `brief.py ... | orca orchestration worker-start --spec-file - ...`.
 
---ticket is the issue number (or a Linear ID like ABC-7 for build, check and merge), or for review and fix the integration PR's number
-(as for route.py); --pr names the PR instead when the ticket is also needed.
+--ticket is the issue number (or a Linear ID like ABC-7 for build, check and
+merge), or for review and fix the integration PR's number (as for route.py);
+--pr names the PR instead when the ticket is also needed.
 --ticket-url overrides the URL for another tracker. The repo is `github_repo` in
 the config (or --repo). Nothing is read from GitHub or Orca, and nothing is written.
 
---extra <file> (or `-` for stdin; required for review, where an empty file means none) appends the coordinator's ticket-specific text under
-a heading: the adversarial question for a check, `notes.py --markdown` for a review.
+--extra <file> (or `-` for stdin; required for review, where an empty file means
+none) appends the coordinator's ticket-specific text under a heading: the
+adversarial question for a check, `notes.py --markdown` for a review.
 A repo's own docs/agents/briefs/<role>.md, when present, is appended after the
 template and before the extra text.
 """
@@ -45,7 +47,8 @@ def main() -> int:
     p.add_argument("--round", default="1", help="which round of check or fix this is (default 1)")
     p.add_argument("--base", default="main", help="the base branch the integration PR targets (default main)")
     p.add_argument("--extra", metavar="FILE", help="ticket-specific text to append; - reads stdin")
-    p.add_argument("--briefs-dir", default="docs/agents/briefs", help="the repo's own briefs (default docs/agents/briefs)")
+    p.add_argument("--briefs-dir", default="docs/agents/briefs",
+                   help="the repo's own briefs (default docs/agents/briefs)")
     args = p.parse_args()
     # With --repo and --ticket-url (a Linear repo) there is nothing to read from the config.
     cfg = {"github_repo": args.repo} if args.repo and args.ticket_url else cli.load(args)
@@ -84,7 +87,8 @@ def main() -> int:
         cli.die("--extra is required for --role review (an empty file means no carried notes)")
     extra = None
     if args.extra == "":
-        extra = ""  # an empty argument is no text, not a missing flag; testing truthiness would drop the review's notes section
+        # An empty argument is no text, not a missing flag; testing truthiness would drop the review's notes section.
+        extra = ""
     elif args.extra is not None:
         try:
             extra = sys.stdin.read() if args.extra == "-" else Path(args.extra).read_text(encoding="utf-8")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cost profile of one Orca run.
 
-  profile.py --run <run id>
+  profile.py --run <run id> [--coordinator <transcript> ...] [--pr <n> --apply]
 
 Lists the run's workers (orca orchestration worker-list --run --json), finds
 each worker's Claude transcripts, counts usage once per API message and prices
@@ -15,6 +15,11 @@ then ~/.claude/projects/<encoded worktree path>/. When a worker yields nothing
 it stops with the list, rather than report a cost that is too low.
 
 Tickets are `#N` issue numbers, read from the Orca task titles (`#123 · build · haiku`).
+
+--coordinator takes the coordinator's transcripts: repeat the flag, or list several
+paths, for a run that spanned several coordinator sessions. An API message a resumed
+session repeats in a later file counts once, and a file named twice is one session.
+A path that is missing or holds no usage stops the run unless --allow-missing.
 
 --pr <number> --apply posts the short summary as a comment on that pull request
 (`gh pr comment`); the coordinator runs it on the milestone's integration PR.
@@ -81,7 +86,9 @@ def main() -> None:
     p.add_argument("--merged", default="", help="comma-separated ticket ids (#12,#13) that merged, added to what workers report")
     p.add_argument("--slots", type=int, default=int(os.environ.get("FLOW_SLOTS", "4")), help="worker slots (default 4)")
     p.add_argument("--out", help="JSON output (default profile-<run>.json)")
-    p.add_argument("--allow-missing", action="store_true", help="report even when some workers have no transcript")
+    p.add_argument("--allow-missing", action="store_true",
+                   help="report even when some workers have no transcript, or a --coordinator path is missing "
+                        "or holds no usage")
     p.add_argument("--pr", help="integration PR number to comment the summary on (with --apply)")
     args = p.parse_args()
 

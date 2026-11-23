@@ -103,7 +103,8 @@ def main() -> int:
         if cfg is not None and cfg.get("tracker") == "github":
             gh = gh_mod.Gh(cfg["github_repo"],
                            runner=lambda a, s=None: gh_mod.run_gh(a, s, timeout=status.TIMEOUT))
-        data = status.build(cfg=cfg, run_id=args.run, milestone=args.milestone, pr=pr, asks_file=path, notes_file=notes.notes_path("."),
+        data = status.build(cfg=cfg, run_id=args.run, milestone=args.milestone, pr=pr, asks_file=path,
+                            notes_file=notes.notes_path("."),
                             orca_runner=lambda a: orca.orca(a, timeout=status.TIMEOUT), gh=gh,
                             slow_factor=args.slow_factor, slow_minutes=args.slow_minutes)
     except Exception as exc:  # noqa: BLE001 - a footer must never break the turn

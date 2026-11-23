@@ -88,7 +88,8 @@ def live_asks(path: Path) -> list:
 
 
 def add_ask(path: Path, text: str, ticket=None, where: str = "") -> str:
-    return notes_mod.add(path, text, None if ticket is None else gh_mod.ticket_number(ticket), where=" ".join(str(where).split())[:200])
+    number = None if ticket is None else gh_mod.ticket_number(ticket)
+    return notes_mod.add(path, text, number, where=" ".join(str(where).split())[:200])
 
 
 def done_ask(path: Path, ask_id: str) -> bool:

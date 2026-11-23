@@ -9,6 +9,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+from flowlib import github as gh_mod
 from flowlib import notes, status
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -53,7 +54,7 @@ class StoreTest(Base):
         self.assertEqual([l for l in md if not l.startswith("  ")], ["- #7", "- ABC-3", "- ABC-12"])
 
     def test_status_asks_still_take_only_github_numbers(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(gh_mod.GitHubError):
             status.add_ask(self.path, "x", ticket="ABC-1")
 
     def test_add_needs_text_and_a_ticket(self):
