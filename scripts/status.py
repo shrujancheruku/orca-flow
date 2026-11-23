@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """The status footer: what the build has in progress and what waits on you.
+It reads, except for --ask and --done, which write the coordinator's asks file
+(`<git common dir>/flow/asks.jsonl`, never tracked); nothing else is written.
 
   status.py [--run <id>] [--milestone <title>] [--pr <n>] [--plain | --json]
   status.py --ask "<text>" [--ticket <n>] [--where <text>]   record an ask; prints its id
@@ -25,7 +27,8 @@ nothing`.
 
 The asks live in `<git common dir>/flow/asks.jsonl` (mode 0600; inside .git,
 so never tracked, and shared by every worktree), or `$FLOW_ASKS_FILE`. An ask
-tied to an issue or PR that has closed is dropped.
+tied to an issue or PR that has closed is dropped. The tally line adds
+`; N notes carried to the review` when `notes.py` holds any.
 
 Reads only; the footer always exits 0 and names on one `Unavailable:` line
 whatever it could not read. `--done` with an unknown id exits 1.
@@ -39,7 +42,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, config, orca, status  # noqa: E402
+from flowlib import cli, config, notes, orca, status  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
 
 
@@ -101,6 +104,7 @@ def main() -> int:
             gh = gh_mod.Gh(cfg["github_repo"],
                            runner=lambda a, s=None: gh_mod.run_gh(a, s, timeout=status.TIMEOUT))
         data = status.build(cfg=cfg, run_id=args.run, milestone=args.milestone, pr=pr, asks_file=path,
+                            notes_file=notes.notes_path("."),
                             orca_runner=lambda a: orca.orca(a, timeout=status.TIMEOUT), gh=gh,
                             slow_factor=args.slow_factor, slow_minutes=args.slow_minutes)
     except Exception as exc:  # noqa: BLE001 - a footer must never break the turn

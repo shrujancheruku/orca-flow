@@ -1,5 +1,10 @@
 import json
+import os
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from flowlib import agents, estimating, prices, profiler, transcripts
 
@@ -173,3 +178,126 @@ class OrcaFieldsAndAttributionTest(unittest.TestCase):
         self.assertEqual([rows[k]["round_one_approved"] for k in ("#1", "#2", "#9")], [True, False, False])
         self.assertFalse(rows["#2"]["escalated"])
         self.assertAlmostEqual(p["review_round_one_approval"], 1 / 3)
+
+
+class CoordinatorSessionsTest(unittest.TestCase):
+    """A run can span several coordinator sessions: each transcript counts, an API message once."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+
+    def write(self, name, *recs):
+        path = self.dir / name
+        path.write_text("".join(json.dumps(r) + "\n" for r in recs))
+        return str(path)
+
+    def test_two_transcripts_are_summed(self):
+        a = self.write("a.jsonl", rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z"))
+        b = self.write("b.jsonl", rec("m2", "claude-haiku-4-5", "2026-11-10T11:00:00Z"),
+                       rec("m3", "claude-sonnet-4-6", "2026-11-10T11:01:00Z"))
+        s, missing = transcripts.summarise_files([a, b])
+        self.assertEqual(missing, [])
+        self.assertEqual((s["sessions"], s["messages"]), (2, 3))
+        expected = transcripts.summarise_file(a)["cost"] + transcripts.summarise_file(b)["cost"]
+        self.assertAlmostEqual(s["cost"], expected)
+        self.assertEqual(s["by_model"]["claude-haiku-4-5"]["messages"], 2)
+        self.assertEqual(s["by_model"]["claude-sonnet-4-6"]["messages"], 1)
+
+    def test_a_message_repeated_across_two_files_is_counted_once(self):
+        # a resumed session repeats the earlier messages, so m2 is in both files
+        a = self.write("a.jsonl", rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z"),
+                       rec("m2", "claude-haiku-4-5", "2026-11-10T10:01:00Z"))
+        b = self.write("b.jsonl", rec("m2", "claude-haiku-4-5", "2026-11-10T10:01:00Z"),
+                       rec("m3", "claude-haiku-4-5", "2026-11-10T10:02:00Z"))
+        s, _ = transcripts.summarise_files([a, b])
+        self.assertEqual(s["messages"], 3)
+        self.assertAlmostEqual(s["cost"], 3 * (1000 * 1 + 100 * 5) / 1e6)
+
+    def test_one_transcript_given_twice_counts_once_in_any_spelling(self):
+        # no id on the message, so it is keyed by path and line: a second spelling must not count it again
+        plain = {"timestamp": "2026-11-10T10:01:00Z",
+                 "message": {"model": "claude-haiku-4-5", "usage": {"input_tokens": 1000, "output_tokens": 100}}}
+        a = self.write("a.jsonl", rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z"), plain)
+        (self.dir / "t").mkdir()
+        other_spelling = str(self.dir / "t" / ".." / "a.jsonl")
+        once, _ = transcripts.summarise_files([a])
+        for paths in ([a, a], [a, other_spelling]):
+            with self.subTest(paths=paths):
+                s, missing = transcripts.summarise_files(paths)
+                self.assertEqual(missing, [])
+                self.assertEqual((s["sessions"], s["messages"]), (1, 2))
+                self.assertAlmostEqual(s["cost"], once["cost"])
+
+    def test_a_repeated_id_keeps_its_first_copy_in_one_file_as_across_files(self):
+        first = rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z", inp=1000)
+        second = rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z", inp=5000)
+        one = transcripts.summarise(transcripts.read_jsonl([json.dumps(first), json.dumps(second)]))
+        a = self.write("a.jsonl", first)
+        b = self.write("b.jsonl", second)
+        two, _ = transcripts.summarise_files([a, b])
+        self.assertEqual(one["by_model"]["claude-haiku-4-5"]["input"], 1000)
+        self.assertEqual(two["by_model"]["claude-haiku-4-5"]["input"], 1000)
+
+    def test_naive_and_aware_timestamps_mix_as_utc(self):
+        aware = self.write("aware.jsonl", rec("m1", "claude-haiku-4-5", "2026-01-01T00:01:00Z"))
+        naive = self.write("naive.jsonl", rec("m2", "claude-haiku-4-5", "2026-01-01T00:02:00"))
+        s, _ = transcripts.summarise_files([naive, aware])
+        self.assertEqual(s["messages"], 2)
+        self.assertEqual(s["first_at"], "2026-01-01T00:01:00+00:00")
+        self.assertEqual(s["last_at"], "2026-01-01T00:02:00+00:00")
+
+    def test_context_series_runs_in_time_order_across_files(self):
+        late = self.write("late.jsonl", rec("m2", "claude-haiku-4-5", "2026-11-10T12:00:00Z"))
+        early = self.write("early.jsonl", rec("m1", "claude-haiku-4-5", "2026-11-10T09:00:00Z"))
+        s, _ = transcripts.summarise_files([late, early])
+        ats = [c["at"] for c in s["contexts"]]
+        self.assertEqual(ats, sorted(ats))
+        self.assertEqual(len(ats), 2)
+
+    def test_a_missing_path_or_one_without_usage_is_reported_by_name(self):
+        gone = str(self.dir / "gone.jsonl")
+        plain = self.write("plain.jsonl", {"timestamp": "2026-11-10T10:00:00Z", "type": "user"})
+        good = self.write("good.jsonl", rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z"))
+        s, missing = transcripts.summarise_files([gone, plain, good])
+        self.assertEqual(missing, [gone, plain])
+        self.assertEqual((s["sessions"], s["messages"]), (1, 1))
+        s, missing = transcripts.summarise_files([gone])
+        self.assertIsNone(s)
+        self.assertEqual(missing, [gone])
+
+    def test_summary_line_for_zero_one_and_several_sessions(self):
+        def body(coordinator):
+            return profiler.summary_body(profiler.build_profile("r", [], coordinator, [], 1), "2026-11-04")
+
+        def coord(sessions):
+            return {"cost": 12.34, "by_model": {}, "contexts": [], "sessions": sessions}
+
+        self.assertIn("coordinator not counted.", body(None))
+        self.assertIn("coordinator $12.34 over 1 session.", body(coord(1)))
+        self.assertIn("coordinator $12.34 over 3 sessions.", body(coord(3)))
+
+    def test_cli_repeated_flag_and_missing_path_error(self):
+        script = Path(__file__).resolve().parent.parent / "scripts" / "profile.py"
+        workers = self.dir / "workers.json"
+        workers.write_text(json.dumps([{"dispatchId": "ctx_1", "taskId": "task_1", "state": "succeeded",
+                                        "workspace": "repo::/no/such/worktree"}]))
+        a = self.write("a.jsonl", rec("m1", "claude-haiku-4-5", "2026-11-10T10:00:00Z"))
+        b = self.write("b.jsonl", rec("m2", "claude-haiku-4-5", "2026-11-10T11:00:00Z"))
+        c = self.write("c.jsonl", rec("m3", "claude-haiku-4-5", "2026-11-10T12:00:00Z"))
+        out = self.dir / "profile.json"
+        base = [sys.executable, str(script), "--run", "r1", "--workers-json", str(workers), "--allow-missing",
+                "--out", str(out)]
+        done = subprocess.run(base + ["--coordinator", a, b, "--coordinator", c],
+                              capture_output=True, text=True, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        profile = json.loads(out.read_text())
+        self.assertEqual(profile["coordinator_sessions"], 3)
+        self.assertIn("over 3 sessions", done.stdout)
+
+        gone = str(self.dir / "missing.jsonl")
+        strict = [part for part in base if part != "--allow-missing"]
+        failed = subprocess.run(strict + ["--coordinator", a, gone], capture_output=True, text=True)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn(gone, failed.stderr)

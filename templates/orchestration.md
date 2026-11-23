@@ -28,7 +28,7 @@ Put the model in the Orca task title: `#123 · build · haiku`. The profiler rea
 
 1. `orca reference find https://github.com/{{REPO}}/issues/<n> --json` first. If a workspace or agent is already attached to the issue, resume or read it instead of starting another. (Orca wants the issue URL; a bare number is not supported.)
 2. `orca worktree create --issue <n> --name "<n>-<slug>" --base-branch integration/<milestone-slug> --no-parent --json` makes the ticket's worktree and links it to the issue.
-3. `orca orchestration worker-start --worktree issue:<n> --task-title "<task_title from route.py>" <flags from route.py> --spec-file -`, with the brief on stdin. The brief holds context pointers: the issue URL, the spec, the exploration notes, the integration branch.
+3. `orca orchestration worker-start --worktree issue:<n> --task-title "<task_title from route.py>" <flags from route.py> --spec-file -`, with the brief on stdin, printed by `python3 {{FLOW_SCRIPTS}}/brief.py --role <role> --ticket <n> --integration-branch <branch>` (see "Briefs" in the build skill). The brief holds context pointers: the issue URL, the spec, the exploration notes, the integration branch.
 
 The merger, checker, fixer and reviewer start the same way: a `--task-title` of the shape `#<n> · <role> · <model>`, and the flags from `route.py`.
 
@@ -63,7 +63,7 @@ Blockers are the issue's native dependencies (`gh api repos/{{REPO}}/issues/<n>/
 
 - A build milestone is a GitHub Milestone. Its tickets carry that milestone.
 - One integration branch (`integration/<milestone-slug>`) and one draft PR into main per milestone. Open the draft after the first merge, with `--milestone`.
-- The Haiku `check` worker passes a ticket before it merges into the integration branch. A failed check goes back to the implementer; it is not merged.
+- The Haiku `check` worker passes a ticket before it merges into the integration branch. A failed check goes back to the implementer; it is not merged, except a paperwork-only miss the coordinator rules accepted and records with `notes.py --add` (see "Rulings" in the build skill).
 - A ticket merged into the integration branch gets the `{{INTEGRATED_LABEL}}` label (`gh issue edit <n> --add-label {{INTEGRATED_LABEL}}`). Do not close it.
 - The integration PR body has one `Closes #<n>` line per ticket, kept current as tickets land. When the founder merges the PR into main, GitHub closes those tickets.
 - The founder merges integration PRs.
@@ -96,12 +96,16 @@ A worker stops and reports with `orca orchestration send --type escalation` for 
 - `verify-outside-ticket`: proof needs work outside the ticket.
 - `already-done`: the work is already on the integration branch.
 
+## Review checks
+
+The `check` worker and the integration review apply the rules in `CLAUDE.md`. A script that writes stays a dry run without `--apply`. `notes.py --add/--done` and `status.py --ask/--done` are exempt: they write only the local bookkeeping files under `<git common dir>/flow/` (`notes.jsonl`, `asks.jsonl`), never the repo's tracked files or GitHub, so they need no `--apply`.
+
 ## Profiling
 
 At the end of each milestone, run:
 
 ```
-python3 {{FLOW_SCRIPTS}}/profile.py --run <run id> --coordinator <coordinator transcript> --pr <integration PR number> --apply
+python3 {{FLOW_SCRIPTS}}/profile.py --run <run id> --coordinator <coordinator transcript> [--coordinator <another coordinator transcript> ...] --pr <integration PR number> --apply
 ```
 
 Read the HTML it writes. `--pr ... --apply` has the coordinator post the summary as a comment on the integration PR. The profile is unverified until the first real run.

@@ -25,23 +25,17 @@ prints: this is a footer and must never break a turn.
 
 from __future__ import annotations
 
-import fcntl
-import hashlib
 import json
-import os
-import re
-import secrets
 import statistics
-import subprocess
-import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import github as gh_mod
+from . import notes as notes_mod
 from . import orca as orca_mod
 from . import routing
+from .text import BIDI, TITLE_MAX, clean, cut  # noqa: F401 - re-exported: callers use status.clean
 
-TITLE_MAX = 60
 LIST_MAX = 15  # lines kept per section; the rest is "+N more"
 TIMEOUT = 20  # seconds per subprocess: a hung CLI must not hang the turn
 DONE_STATES = {"succeeded", "failed", "cancelled", "canceled", "stopped"}
@@ -61,26 +55,8 @@ SECTIONS = (  # (id, heading, plain marker), in the order they print
 ANSI = {"human": 31, "human-outside": 33, "needs-info": 33, "asks": 34, "worker-questions": 35, "pr": 32}
 NOTHING = "Waiting on you: nothing"
 
-BIDI = re.compile("[\u202a-\u202e\u2066-\u2069]")  # embedding, override and isolate controls
-
 
 # -- text ---------------------------------------------------------------------
-
-def clean(text) -> str:
-    """A line safe to print: control characters and bidi overrides dropped (an ESC would
-    inject terminal escapes), whitespace runs collapsed, and three or more backticks turned
-    into quotes (they would close the fenced block the coordinator prints this in)."""
-    text = "".join(" " if c in "\t\n\r" else c for c in str(text)
-                   if c in "\t\n\r" or unicodedata.category(c) != "Cc")  # C0, DEL and C1, ESC among them
-    text = BIDI.sub("", text)
-    text = re.sub(r"`{3,}", lambda m: "'" * len(m.group()), text)
-    return " ".join(text.split())
-
-
-def cut(text, width: int = TITLE_MAX) -> str:
-    text = clean(text)
-    return text if len(text) <= width else text[: max(width - 1, 1)] + "…"
-
 
 def duration(seconds) -> str:
     minutes = int(seconds // 60)
@@ -100,79 +76,24 @@ def parse_time(value):
 
 
 # -- the asks file ------------------------------------------------------------
+# The storage is shared with the carried notes (flowlib/notes.py); these keep the asks' names.
 
 def asks_path(cwd: str = ".") -> Path:
-    """Where the coordinator's asks live: `$FLOW_ASKS_FILE`, else `<git common dir>/flow/asks.jsonl`
-    (inside .git, so never tracked and shared by every worktree of the repo), else a per-repo file
-    under the user's cache dir when the directory is not a git checkout."""
-    env = os.environ.get("FLOW_ASKS_FILE")
-    if env:
-        return Path(env)
-    try:
-        out = subprocess.run(["git", "-C", cwd, "rev-parse", "--git-common-dir"],
-                             capture_output=True, text=True, check=False, timeout=TIMEOUT)
-        if out.returncode == 0 and out.stdout.strip():
-            # Relative to `cwd` in the main checkout (".git"), absolute from a linked worktree.
-            return (Path(cwd) / out.stdout.strip()).resolve() / "flow" / "asks.jsonl"
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-    key = hashlib.sha1(os.path.abspath(cwd).encode()).hexdigest()[:12]
-    return cache / "flow" / key / "asks.jsonl"
-
-
-def _append(path: Path, rec: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-    try:
-        if os.fstat(fd).st_mode & 0o077:
-            os.fchmod(fd, 0o600)
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        try:
-            os.write(fd, (json.dumps(rec, separators=(",", ":")) + "\n").encode("utf-8"))
-        finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-    finally:
-        os.close(fd)
+    """Where the coordinator's asks live: `$FLOW_ASKS_FILE`, else `<git common dir>/flow/asks.jsonl`."""
+    return notes_mod.store_path("asks.jsonl", "FLOW_ASKS_FILE", cwd)
 
 
 def live_asks(path: Path) -> list:
-    """The live asks, oldest first. A line that is not JSON is skipped; no file is no asks."""
-    entries: dict = {}
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return []
-    for line in lines:
-        try:
-            rec = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(rec, dict) or not isinstance(rec.get("id"), str):
-            continue
-        if rec.get("op") == "add":
-            entries[rec["id"]] = rec
-        elif rec.get("op") == "done":
-            entries.pop(rec["id"], None)
-    return list(entries.values())
+    return notes_mod.live(path)
 
 
 def add_ask(path: Path, text: str, ticket=None, where: str = "") -> str:
-    ask_id = secrets.token_hex(3)
-    rec = {"op": "add", "id": ask_id, "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "text": " ".join(str(text).split())[:500], "where": " ".join(str(where).split())[:200]}
-    if ticket is not None:
-        rec["ticket"] = gh_mod.ticket_number(ticket)
-    _append(path, rec)
-    return ask_id
+    number = None if ticket is None else gh_mod.ticket_number(ticket)
+    return notes_mod.add(path, text, number, where=" ".join(str(where).split())[:200])
 
 
 def done_ask(path: Path, ask_id: str) -> bool:
-    """Clear an ask; False when no live ask has that id (nothing is written then)."""
-    if not any(e["id"] == ask_id for e in live_asks(path)):
-        return False
-    _append(path, {"op": "done", "id": ask_id})
-    return True
+    return notes_mod.done(path, ask_id)
 
 
 def ask_line(entry: dict) -> str:
@@ -494,7 +415,7 @@ def label_config(cfg) -> dict:
             "integrated": (cfg or {}).get("labels", {}).get("integrated") or "integrated"}
 
 
-def build(*, cfg, run_id=None, milestone=None, pr=None, asks_file: Path, orca_runner, gh=None,
+def build(*, cfg, run_id=None, milestone=None, pr=None, asks_file: Path, notes_file=None, orca_runner, gh=None,
           now=None, slow_factor=None, slow_minutes=None) -> dict:
     """The footer's data. `cfg` None (no config) or a Linear config skips GitHub; `gh` None means no GitHub."""
     now = now or datetime.now(timezone.utc)
@@ -535,6 +456,7 @@ def build(*, cfg, run_id=None, milestone=None, pr=None, asks_file: Path, orca_ru
         off_ticket = sum(1 for r in rows if r["ticket"] not in numbers)
     return {"run": run["run"], "milestone": gh_data.get("milestone"), "in_progress": rows, "tally": tly,
             "off_ticket_workers": off_ticket,
+            "notes_carried": len(notes_mod.live(notes_file)) if notes_file else 0,
             "waiting": waiting(gh_data, labels, kept, questions, tly), "unavailable": [clean(u) for u in unavailable]}
 
 
@@ -551,6 +473,9 @@ def tally_line(data: dict) -> str:
     n = data.get("off_ticket_workers") or 0
     if n:
         extra += f"; {n} worker{'s' if n > 1 else ''} on the integration PR or outside the tickets"
+    k = data.get("notes_carried") or 0
+    if k:
+        extra += f"; {k} note{'s' if k > 1 else ''} carried to the review"
     return clean(f"{cut(data['milestone'] or 'milestone', 40)}: {t['integrated']}/{t['total']} integrated, "
                  f"{t['in_progress']} in progress, {t['ready_next']} ready next, {t['blocked']} blocked, "
                  f"{t['waiting_on_you']} waiting on you{extra}")
