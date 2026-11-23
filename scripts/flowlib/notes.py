@@ -13,6 +13,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import secrets
 import subprocess
 from datetime import datetime, timezone
@@ -86,9 +87,38 @@ def add(path: Path, text: str, ticket=None, **extra) -> str:
            "text": " ".join(str(text).split())[:500]}
     rec.update(extra)
     if ticket is not None:
-        rec["ticket"] = gh_mod.ticket_number(ticket)
+        rec["ticket"] = ticket  # already normalised by the caller: `ticket_ref` for notes, `ticket_number` for asks
     append(path, rec)
     return rec_id
+
+
+LINEAR_ID = re.compile(r"[A-Za-z][A-Za-z0-9]*-[0-9]+")
+
+
+def ticket_ref(ref):
+    """123 / "#123" -> 123 (a GitHub issue); "abc-123" -> "ABC-123" (a Linear issue). Notes take both
+    because the Linear adapter's coordinator records them too; the asks and the footer stay GitHub-only."""
+    text = str(ref).strip()
+    if LINEAR_ID.fullmatch(text):
+        return text.upper()
+    try:
+        return gh_mod.ticket_number(text)
+    except gh_mod.GitHubError:
+        raise gh_mod.GitHubError(f"{ref!r} is not a ticket like 123, #123 or ABC-123") from None
+
+
+def _ticket_key(t):
+    # GitHub numbers first in number order, then Linear IDs by team and number, no ticket last.
+    if t is None:
+        return (2, "", 0)
+    if isinstance(t, int):
+        return (0, "", t)
+    team, _, num = str(t).rpartition("-")
+    return (1, team, int(num) if num.isdigit() else 0)
+
+
+def _ticket_label(t) -> str:
+    return f"#{t}" if isinstance(t, int) else clean(str(t))
 
 
 def done(path: Path, rec_id: str) -> bool:
@@ -106,19 +136,19 @@ def notes_path(cwd: str = ".") -> Path:
 
 
 def note_line(entry: dict) -> str:
-    ref = f"#{entry['ticket']}" if entry.get("ticket") else "no ticket"
+    ref = _ticket_label(entry["ticket"]) if entry.get("ticket") else "no ticket"
     return clean(f"[{entry['id']}] {ref}: {entry.get('text', '')}")
 
 
 def markdown(entries: list) -> str:
-    """The live notes as a Markdown list grouped by ticket (tickets in number order, no ticket last);
+    """The live notes as a Markdown list grouped by ticket (GitHub numbers in order, then Linear IDs, no ticket last);
     empty when there are none."""
     groups: dict = {}
     for e in entries:
         t = e.get("ticket")
-        groups.setdefault(t if isinstance(t, int) else None, []).append(e)
+        groups.setdefault(t if isinstance(t, (int, str)) and t != "" else None, []).append(e)
     lines = []
-    for t in sorted(groups, key=lambda k: (k is None, k or 0)):
-        lines.append(f"- #{t}" if t is not None else "- No ticket")
+    for t in sorted(groups, key=_ticket_key):
+        lines.append(f"- {_ticket_label(t)}" if t is not None else "- No ticket")
         lines.extend(f"  - {clean(e.get('text', ''))} (`{clean(e['id'])}`)" for e in groups[t])
     return "\n".join(lines)

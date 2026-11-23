@@ -39,6 +39,23 @@ class StoreTest(Base):
         self.assertEqual(notes.live(self.path), [])
         self.assertEqual(self.run_cli("--done", note_id)[0], 1)  # already cleared
 
+    def test_a_linear_id_is_accepted_grouped_and_printed(self):
+        for argv in (("--add", "one", "--ticket", "abc-12"), ("--add", "two", "--ticket", "ABC-3"),
+                     ("--add", "gh", "--ticket", "#7"), ("--add", "bad", "--ticket", "ABC-")):
+            if argv[-1] == "ABC-":
+                with self.assertRaises(SystemExit), mock.patch("sys.stderr", io.StringIO()):
+                    self.run_cli(*argv)
+            else:
+                self.assertEqual(self.run_cli(*argv)[0], 0)
+        listing = self.run_cli()[1]
+        self.assertIn("ABC-12: one", listing)
+        md = self.run_cli("--markdown")[1].splitlines()
+        self.assertEqual([l for l in md if not l.startswith("  ")], ["- #7", "- ABC-3", "- ABC-12"])
+
+    def test_status_asks_still_take_only_github_numbers(self):
+        with self.assertRaises(Exception):
+            status.add_ask(self.path, "x", ticket="ABC-1")
+
     def test_add_needs_text_and_a_ticket(self):
         for argv in (["--add", "  "], ["--add", "text"]):
             with self.assertRaises(SystemExit), mock.patch("sys.stderr", io.StringIO()):
@@ -101,7 +118,10 @@ class StoreTest(Base):
     def test_notes_and_asks_share_one_store_but_not_one_file(self):
         self.assertEqual(status.asks_path(".").name, "asks.jsonl")
         self.assertEqual(notes.notes_path(".").name, "notes.jsonl")
-        self.assertIs(status.live_asks.__module__, status.__name__)
+        # `status` reads the asks through the notes store code, not a copy of it.
+        with mock.patch.object(notes, "live", return_value=["sentinel"]) as live:
+            self.assertEqual(status.live_asks(self.path), ["sentinel"])
+        live.assert_called_once_with(self.path)
         a = status.add_ask(self.path, "an ask", where="here")
         self.assertEqual(notes.live(self.path)[0]["id"], a)
 

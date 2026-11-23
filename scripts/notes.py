@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Notes the coordinator carries from a ticket's merge to the integration review.
 
-  notes.py --add "<text>" --ticket <n>   record a note; prints its id
-  notes.py --done <id>                   clear one (the fixer, once it has fixed it)
-  notes.py                               list the live notes, oldest first
-  notes.py --markdown                    the live notes as a Markdown list grouped by
-                                         ticket, for the review brief; nothing when none
+  notes.py --add "<text>" --ticket <n|ABC-123>   record a note; prints its id
+  notes.py --done <id>                           clear one (the fixer, once it has fixed it)
+  notes.py                                       list the live notes, oldest first
+  notes.py --markdown                            the live notes as a Markdown list grouped by
+                                                 ticket, for the review brief; nothing when none
+
+--ticket takes 123 or #123 (GitHub) or ABC-123 (Linear, stored upper-case).
 
 A note is a miss the coordinator ruled "accepted, merging": a check that failed
 only on paperwork. See "Rulings" in skills/build/SKILL.md.
@@ -41,9 +43,9 @@ def main() -> int:
         if not " ".join(args.add.split()):
             cli.die("--add needs some text")
         if args.ticket is None:
-            cli.die("--add needs --ticket <n>")
+            cli.die("--add needs --ticket <n> or <ABC-123>")
         try:
-            print(notes.add(path, args.add, ticket=args.ticket))
+            print(notes.add(path, args.add, ticket=notes.ticket_ref(args.ticket)))
         except gh_mod.GitHubError as exc:
             cli.die(str(exc))
         return 0

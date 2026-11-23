@@ -6,7 +6,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Features
 
-- `notes.py` keeps the notes the coordinator carries to the integration review. `--add "<text>" --ticket <n>` records one and prints its id, `--done <id>` clears it, no flag lists the live notes oldest first, and `--markdown` prints them grouped by ticket for the review brief (nothing when there are none). They live in `<git common dir>/flow/notes.jsonl` (mode 0600; `$FLOW_NOTES_FILE`), through the same append-only store the asks use, now in `flowlib/notes.py`.
+- `notes.py` keeps the notes the coordinator carries to the integration review. `--add "<text>" --ticket <n|ABC-123>` records one (a GitHub number or a Linear ID) and prints its id, `--done <id>` clears it, no flag lists the live notes oldest first, and `--markdown` prints them grouped by ticket for the review brief (nothing when there are none). They live in `<git common dir>/flow/notes.jsonl` (mode 0600; `$FLOW_NOTES_FILE`), through the same append-only store the asks use, now in `flowlib/notes.py`.
 - `/flow:build` has a "Rulings" rule: a check that fails only on paperwork, with every behaviour criterion passed, may be ruled accepted, commented on the ticket, recorded with `notes.py --add` and merged without a second check. A fail on behaviour, a criterion, safety or a risk path still goes back to the implementer. The review brief includes `notes.py --markdown` and the fixer clears each note it fixes. The same rule is in `templates/orchestration.md` and `adapters/linear/BUILD.md`.
 - The status footer's tally line adds `; N notes carried to the review` when any are held.
 

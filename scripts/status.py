@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """The status footer: what the build has in progress and what waits on you.
+It reads, except for --ask and --done, which write the coordinator's asks file
+(`<git common dir>/flow/asks.jsonl`, never tracked); nothing else is written.
 
   status.py [--run <id>] [--milestone <title>] [--pr <n>] [--plain | --json]
   status.py --ask "<text>" [--ticket <n>] [--where <text>]   record an ask; prints its id
