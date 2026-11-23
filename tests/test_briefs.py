@@ -131,6 +131,17 @@ class MissingValueTest(Base):
     def test_an_empty_extra_for_review_says_no_carried_notes(self):
         self.assertIn("No carried notes", self.brief("review"))
 
+    def test_an_empty_extra_argument_for_review_says_no_carried_notes(self):
+        code, out, err = self.run_cli("--role", "review", "--ticket", "45", "--integration-branch", "i/m", "--repo", "acme/app", "--extra", "")
+        self.assertEqual(code, 0, err)
+        self.assertIn("No carried notes", out)
+
+    def test_a_linear_id_without_a_ticket_url_names_the_flag(self):
+        code, out, err = self.run_cli("--role", "build", "--ticket", "ABC-7", *COMMON)
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertIn("--ticket-url", err)
+
     def test_a_bad_ticket_is_an_error(self):
         code, _, err = self.run_cli("--role", "build", "--ticket", "abc", *COMMON)
         self.assertEqual(code, 1)
@@ -187,7 +198,7 @@ class RulesTest(unittest.TestCase):
 
     def test_build(self):
         self.has("build", "based on the tip of", "test-first", "acceptance criterion", "done list",
-                 "resolution comment", "verbatim last lines", "Merge the tip of", "rerun the verify commands", "stop and escalate if the branch has commits of its own",
+                 "resolution comment", "verbatim last lines", "Merge the tip of", "rerun the verify commands", "rebase your commits onto it; never reset them away",
                  "Never end a turn waiting on a process that may not exit",
                  "search of the vendor's docs or issues for the exact error")
 

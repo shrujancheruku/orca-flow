@@ -59,6 +59,9 @@ def main() -> int:
             number = notes_mod.ticket_ref(args.ticket) if args.ticket else None
     except gh_mod.GitHubError as exc:
         cli.die(str(exc))
+    if isinstance(number, str) and not args.ticket_url:
+        # A Linear ID has no GitHub issue to link; guessing the URL would send the worker to a page that does not exist.
+        cli.die(f"--ticket {number} is a Linear ID: pass --ticket-url")
     kind = "pull" if pr_role else "issues"
     url = args.ticket_url or (f"https://github.com/{cfg.get('github_repo')}/{kind}/{number}" if number else None)
     values = {
@@ -71,7 +74,9 @@ def main() -> int:
         # The review reads its carried notes from the extra text; none must be said, not left out.
         cli.die("--extra is required for --role review (an empty file means no carried notes)")
     extra = None
-    if args.extra:
+    if args.extra == "":
+        extra = ""  # an empty argument is no text, not a missing flag; testing truthiness would drop the review's notes section
+    elif args.extra is not None:
         try:
             extra = sys.stdin.read() if args.extra == "-" else Path(args.extra).read_text(encoding="utf-8")
         except OSError as exc:

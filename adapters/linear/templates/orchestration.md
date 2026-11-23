@@ -85,7 +85,7 @@ A worker stops and reports with `orca orchestration send --type escalation` for 
 At the end of each milestone, run:
 
 ```
-python3 {{FLOW_SCRIPTS}}/profile.py --run <run id> --coordinator <coordinator transcript>
+python3 {{FLOW_SCRIPTS}}/profile.py --run <run id> --coordinator <coordinator transcript> [--coordinator <another coordinator transcript> ...]
 ```
 
 Read the HTML it writes. Post the summary to the milestone's project with `python3 {{ADAPTER_SCRIPTS}}/project_update.py --profile profile-<run id>.json --project <project id> --apply`.
