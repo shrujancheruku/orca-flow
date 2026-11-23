@@ -1,8 +1,8 @@
-# Build #{{ticket}}
+# Build {{ref}}
 
-You are the implementer for ticket #{{ticket}} in {{repo}}.
+You are the implementer for ticket {{ref}} in {{repo}}.
 
-- Ticket: {{url}} (read it with `gh issue view {{ticket}}`; its acceptance criteria are the job)
+- Ticket: {{url}} ({{read}}; its acceptance criteria are the job)
 - Policy: `docs/agents/orchestration.md` (Verify, Environment, Stops, Holds) and `CLAUDE.md`
 - Integration branch: `{{integration_branch}}`. Your worktree is on your own branch from it.
 

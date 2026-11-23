@@ -11,18 +11,24 @@ from pathlib import Path
 
 ROLES = ("build", "check", "merge", "review", "fix")
 TEMPLATES = Path(__file__).resolve().parent.parent.parent / "templates" / "briefs"
+# The plugin's own scripts: a repo that uses the plugin has no scripts/notes.py of its own, and
+# ${CLAUDE_PLUGIN_ROOT} is expanded in a skill, not in a worker's shell, so the brief names the path.
+SCRIPTS = Path(__file__).resolve().parent.parent
 
 # placeholder -> the flag that supplies it, for the error a missing value gives.
 FLAGS = {
     "repo": "--repo",
     "ticket": "--ticket",
-    "pr": "--ticket",
+    "ref": "--ticket",
+    "read": "--ticket",
+    "pr": "--ticket or --pr",
     "url": "--ticket",
     "integration_branch": "--integration-branch",
     "branch": "--branch",
     "tip": "--tip",
     "round": "--round",
     "base": "--base",
+    "flow_scripts": "brief.py",
 }
 
 
@@ -59,7 +65,7 @@ def template(role: str) -> str:
 
 def build(role: str, values: dict, repo_file: Path | None = None, extra: str | None = None) -> str:
     """The filled template, then the repo's own file for the role when present, then the extra text."""
-    parts = [fill(template(role), values).rstrip()]
+    parts = [fill(template(role), {"flow_scripts": str(SCRIPTS), **values}).rstrip()]
     if repo_file is not None and repo_file.is_file():
         parts.append(repo_file.read_text(encoding="utf-8").strip())
     if role == "review" and extra is not None and not extra.strip():

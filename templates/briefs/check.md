@@ -1,6 +1,6 @@
-# Check #{{ticket}} (round {{round}})
+# Check {{ref}} (round {{round}})
 
-You are the checker for ticket #{{ticket}} in {{repo}}. This is read-only: change no file, push nothing, edit no issue or label.
+You are the checker for ticket {{ref}} in {{repo}}. This is read-only: change no file, push nothing, edit no issue or label.
 
 - Ticket: {{url}}
 - Policy: `docs/agents/orchestration.md` (Review checks) and `CLAUDE.md`

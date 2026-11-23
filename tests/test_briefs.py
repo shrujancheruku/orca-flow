@@ -142,10 +142,64 @@ class MissingValueTest(Base):
         self.assertEqual(out, "")
         self.assertIn("--ticket-url", err)
 
+    def test_a_pr_role_with_no_number_names_both_flags(self):
+        for role in ("review", "fix"):
+            with self.subTest(role=role):
+                code, _, err = self.run_cli("--role", role, *COMMON, "--extra", self.empty_file())
+                self.assertEqual(code, 1)
+                self.assertIn("--ticket or --pr", err)
+
     def test_a_bad_ticket_is_an_error(self):
         code, _, err = self.run_cli("--role", "build", "--ticket", "abc", *COMMON)
         self.assertEqual(code, 1)
         self.assertIn("abc", err)
+
+
+class TrackerTest(Base):
+    """A worker's brief follows the ticket's tracker: a Linear ID is read at its URL and has no `#`."""
+
+    LINEAR = ["--ticket", "ABC-7", "--ticket-url", "https://linear.app/x/issue/ABC-7"]
+
+    def linear(self, role, *more):
+        code, out, err = self.run_cli("--role", role, *self.LINEAR, *COMMON, *more)
+        self.assertEqual(code, 0, err)
+        return out
+
+    def test_a_linear_build_brief_does_not_send_the_worker_to_gh(self):
+        out = self.linear("build")
+        self.assertNotIn("gh issue view", out)
+        self.assertIn("https://linear.app/x/issue/ABC-7", out)
+        self.assertIn("# Build ABC-7", out)
+
+    def test_a_github_build_brief_reads_the_issue_with_gh(self):
+        out = self.brief("build")
+        self.assertIn("`gh issue view 7`", out)
+        self.assertIn("# Build #7", out)
+
+    def test_no_linear_id_takes_a_hash(self):
+        more = {"check": ["--branch", "me/x", "--tip", "abc1234"], "merge": ["--branch", "me/x"], "build": []}
+        for role, extra in more.items():
+            with self.subTest(role=role):
+                out = self.linear(role, *extra)
+                self.assertNotIn("#ABC-7", out)
+                self.assertIn("ABC-7", out)
+
+
+class ScriptPathTest(Base):
+    """A repo that uses the plugin has no scripts/notes.py: the brief names the plugin's own."""
+
+    def test_notes_py_is_named_by_the_plugin_path(self):
+        scripts = str(ROOT / "scripts")
+        for role in ("fix", "review"):
+            with self.subTest(role=role):
+                out = self.brief(role)
+                self.assertIn(f"`python3 {scripts}/notes.py", out)
+                self.assertNotIn(" `notes.py", out)
+
+    def test_the_fix_brief_says_where_the_note_ids_come_from(self):
+        out = " ".join(self.brief("fix").split())
+        self.assertIn(f"`python3 {ROOT / 'scripts'}/notes.py` lists them", out)
+        self.assertIn("shared by every worktree", out)
 
 
 class AppendTest(Base):
@@ -209,7 +263,8 @@ class RulesTest(unittest.TestCase):
                  "adversarial question", "quotes the spec", "one comment on the ticket")
 
     def test_merge(self):
-        self.has("merge", "git fetch", "Merge the tip of", "A conflict anywhere else stops you", "shared files", "Run the verify commands on the merged tree",
+        self.has("merge", "git fetch", "Merge the tip of", "A conflict outside the shared and generated files stops you", "shared files",
+                 "regenerate it", "Run the verify commands on the merged tree",
                  "unless nothing new came in", "without force", "fast-forward", "Confirm the pushed tip",
                  "Edit no issue, label or PR")
 

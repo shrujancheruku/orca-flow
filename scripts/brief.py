@@ -64,8 +64,17 @@ def main() -> int:
         cli.die(f"--ticket {number} is a Linear ID: pass --ticket-url")
     kind = "pull" if pr_role else "issues"
     url = args.ticket_url or (f"https://github.com/{cfg.get('github_repo')}/{kind}/{number}" if number else None)
+    # How the worker names and reads its ticket follows the tracker: a GitHub issue is #7 and read
+    # with gh; a ticket with its own URL (a Linear ID) has no # and gh cannot read it.
+    ref = (number if isinstance(number, str) else f"#{number}") if number else None
+    if not number:
+        read = None
+    elif args.ticket_url:
+        read = "read it at that URL"
+    else:
+        read = f"read it with `gh issue view {number}`"
     values = {
-        "repo": cfg.get("github_repo"), "ticket": number, "pr": number, "url": url,
+        "repo": cfg.get("github_repo"), "ticket": number, "ref": ref, "read": read, "pr": number, "url": url,
         "integration_branch": args.integration_branch, "branch": args.branch, "tip": args.tip,
         "round": args.round, "base": args.base,
     }
