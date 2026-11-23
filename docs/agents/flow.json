@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schema/flow.schema.json",
+  "tracker": "github",
+  "github_repo": "shrujancheruku/orca-flow",
+  "labels": {
+    "size": { "S": "size:S", "M": "size:M", "L": "size:L" },
+    "risk": "risk",
+    "integrated": "integrated"
+  },
+  "risk_paths": ["scripts/cleanup.py", "scripts/flowlib/cleanup.py"],
+  "slack_prefix": "flow",
+  "models": { "haiku": "haiku", "sonnet": "sonnet", "opus": "opus" }
+}
