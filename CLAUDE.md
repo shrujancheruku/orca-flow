@@ -7,10 +7,11 @@ A Claude Code plugin: Matt Pocock's skills on Orca. Humans: see [README.md](READ
 - Work from an issue and close it from the PR (`Closes #<n>`).
 - Python 3.9+, standard library only: no dependency is added. Code lives in `scripts/flowlib/`, the scripts in `scripts/` are thin entry points, and tests are in `tests/`.
 - Run `python3 -m unittest` from the repo root; it must pass. A behaviour change ships with a test that fails without it. Tests never call `gh`, `orca` or `claude`: they use the fakes in `tests/helpers.py`.
-- Every script that writes is a dry run until `--apply`, and is safe to rerun. `notes.py --add/--done`, `status.py --ask/--done` and `flow.py watch` are exempt: they write only the local bookkeeping files under `<git common dir>/flow/` (`notes.jsonl`, `asks.jsonl`, `console.json`), never the repo's tracked files or GitHub, so they need no `--apply`.
+- Every script that writes is a dry run until `--apply`, and is safe to rerun. `notes.py --add/--done`, `status.py --ask/--done` and `flow.py watch` are exempt: they write only the local bookkeeping files under `<git common dir>/flow/` (`notes.jsonl`, `asks.jsonl`, `console.json`), never the repo's tracked files or GitHub, so they need no `--apply`. So does the GitHub read cache (`github-cache.json`, `flowlib/ghcache.py`) that `status.py`, `route.py` and the console keep there: it holds only answers to reads.
 - A change to a script, the build skill or a template updates `README.md` and adds a line under the next version in `CHANGELOG.md`. The release itself (the version in `.claude-plugin/plugin.json` and `marketplace.json`, and the tag) is the owner's: never bump it in a ticket.
 - A change to the GitHub path that the Linear adapter mirrors (`adapters/linear/`) is made in both, or the ticket says why not.
 - Comment non-obvious logic with the why.
+- Never pause, stop or kill the founder's flow console or a coordinator session without asking first, even to save GitHub's rate limit.
 - Commits and PR titles follow Conventional Commits (`fix(status): ...`); no generated-by footer or co-author trailer.
 - The repo is public: no secrets, personal data or another repo's private details in code, tests, issues or PRs.
 

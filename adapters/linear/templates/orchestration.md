@@ -68,6 +68,8 @@ On the first usage-limit error from any worker:
 
 Wait out the limit on the same models. Switching model to dodge a limit breaks the profile.
 
+Never pause, stop or kill the founder's flow console or a coordinator session (`kill`, `kill -STOP`, Ctrl+Z, closing its terminal) without asking first. A stopped console looks to the founder like a dead build. Ask them to press `q` in it instead.
+
 ## Stops
 
 A worker stops and reports with `orca orchestration send --type escalation` for one of these reasons:
