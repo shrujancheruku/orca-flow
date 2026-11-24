@@ -96,10 +96,12 @@ def done_ask(path: Path, ask_id: str) -> bool:
     return notes_mod.done(path, ask_id)
 
 
-def ask_line(entry: dict) -> str:
+def ask_line(entry: dict, width: int | None = 120) -> str:
+    """One ask on one line, cut to `width`; `width=None` keeps the whole question (the console wraps it)."""
     ref = f" (#{entry['ticket']})" if entry.get("ticket") else ""
     where = f" — {entry['where']}" if entry.get("where") else ""
-    return cut(f"[{entry['id']}] {entry.get('text', '')}{ref}{where}", 120)
+    line = f"[{entry['id']}] {entry.get('text', '')}{ref}{where}"
+    return clean(line) if width is None else cut(line, width)
 
 
 # -- orca ---------------------------------------------------------------------

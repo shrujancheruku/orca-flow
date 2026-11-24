@@ -14,6 +14,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - The status footer's tally line adds `; N notes carried to the review` when any are held.
 - `profile.py --coordinator` takes every coordinator transcript of a run: repeat the flag or list several paths. The coordinator's cost, per-model usage and context series are summed in time order, an API message that a resumed session repeats in a later file counted once. A message id repeated inside one file also keeps its first copy, a transcript named twice (in any spelling) is one session, and a timestamp with no offset is read as UTC instead of crashing the time order. The summary reads `coordinator $12.34 over 3 sessions`, or `coordinator not counted` when none was given, instead of a total that silently leaves the coordinator out. A path that does not exist or holds no usage is an error that names it, unless `--allow-missing` is passed. `profile.py --help` says all of this.
 
+### Fixes
+
+- The console shows each of the coordinator's asks in full, wrapped to the terminal's width with its continuation lines under the question, instead of cutting it off at 120 characters or the screen's edge. `status.ask_line` takes `width=None` for the whole line; the status footer still cuts at 120.
+
 ## 0.9.1 - 2026-11-23
 
 ### Fixes
