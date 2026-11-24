@@ -206,6 +206,12 @@ def _wrap(text: str, width: int, indent: str = "  ", max_lines: int | None = Non
     return [indent + l for l in lines]
 
 
+def _hang(text: str, width: int, indent: str = "  ", hang: str = "     ") -> list:
+    """`text` wrapped whole to `width`, first line at `indent` and the rest under its text at `hang`."""
+    return textwrap.wrap(clean(text), max(width, len(hang) + 1), initial_indent=indent,
+                         subsequent_indent=hang) or [indent]
+
+
 def frame(snap: dict, width: int = 100, now: float | None = None) -> list:
     """The view as (text, style) lines; style is one of "title", "head", "warn", "dim", "keys" or ""."""
     now = now or time.time()
@@ -248,7 +254,8 @@ def frame(snap: dict, width: int = 100, now: float | None = None) -> list:
         if asks:
             out.append((f"Questions from the coordinator ({len(asks)})", "warn"))
             for i, a in enumerate(asks[:9], 1):
-                out.append(("  " + cut(f"{i}) {status_mod.ask_line(a)}", width - 2), ""))
+                # Never cut: the founder answers from this text, so wrap it to fit the terminal.
+                out.extend((l, "") for l in _hang(f"{i}) {status_mod.ask_line(a, None)}", width))
         for s in others:
             out.append((s["heading"] if s["section"] == "pr" else f"{s['heading']} ({s['count']})", "warn"))
             out.extend(("  " + cut(clean(i), width - 2), "") for i in s["items"])
