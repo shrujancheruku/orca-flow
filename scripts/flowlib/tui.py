@@ -11,9 +11,10 @@ import threading
 
 from . import console
 
-COLOURS = {"title": (curses.COLOR_CYAN, curses.A_BOLD), "head": (curses.COLOR_WHITE, curses.A_BOLD),
-           "warn": (curses.COLOR_YELLOW, curses.A_BOLD), "dim": (curses.COLOR_WHITE, curses.A_DIM),
-           "keys": (curses.COLOR_BLACK, curses.A_REVERSE), "": (-1, 0)}
+# -1 is the terminal's own foreground, so text follows the theme (light or dark) instead of palette white/black.
+COLOURS = {"title": (curses.COLOR_CYAN, curses.A_BOLD), "head": (-1, curses.A_BOLD),
+           "warn": (curses.COLOR_YELLOW, curses.A_BOLD), "dim": (-1, curses.A_DIM),
+           "keys": (-1, curses.A_REVERSE), "": (-1, 0)}
 
 
 def run(state: dict, runner, read_status, asks_file, notes_file, save, interval: float = console.REFRESH) -> None:
