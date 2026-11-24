@@ -12,7 +12,9 @@ Sources, each read at most once per footer:
          its role), inbox --terminal run:<id> (worker questions and escalations
          Orca has not marked handled), gate-list (pending decision gates)
   gh     one GraphQL read (two when the milestone comes from the integration
-         PR): the milestone's issues with their labels and native blockers, the
+         PR), through the cache in flowlib.ghcache that the console and route.py
+         share, so an answer under a minute old is reused and the rate limit is
+         watched: the milestone's issues with their labels and native blockers, the
          open issues labelled ready-for-human or needs-info, the integration
          PR with its checks, and the state of each ask's ticket or PR. Every
          query is label-, milestone- or number-filtered, never the backlog.
@@ -30,6 +32,7 @@ import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import ghcache
 from . import github as gh_mod
 from . import notes as notes_mod
 from . import orca as orca_mod
@@ -251,6 +254,10 @@ def first_query(repo: str, labels: dict, milestone, pr, refs) -> str:
 
 
 def graphql(gh, query: str) -> dict:
+    # Every footer query reports what it cost and what is left, so the reader (flowlib.ghcache) can
+    # slow down, then stop, before the hour's limit runs out instead of after.
+    if query.startswith("query {") and "rateLimit" not in query:
+        query = query[:-1].rstrip() + f" {ghcache.RATE_FIELDS} }}"
     data = gh.read_json(["api", "graphql", "-f", f"query={query}"]) or {}
     if data.get("errors") and not data.get("data"):
         raise gh_mod.GitHubError(f"GraphQL: {data['errors'][0].get('message', 'error')}")
@@ -318,6 +325,8 @@ def read_github(gh, repo, labels, milestone, pr_number, refs, unavailable: list)
     out = {"milestone": milestone, "issues": None, "owner": None, "owner_count": 0, "pr": None, "ref_states": {}}
     try:
         data = graphql(gh, first_query(repo, labels, milestone, pr_number, refs))
+    except ghcache.Paused:
+        return out  # build() names the pause once, from gh.notice()
     except (gh_mod.GitHubError, ValueError) as exc:
         unavailable.append(f"GitHub ({exc})")
         return out
@@ -336,6 +345,8 @@ def read_github(gh, repo, labels, milestone, pr_number, refs, unavailable: list)
         if milestone:
             try:
                 data.update(graphql(gh, "query { " + milestone_part(repo, milestone) + " }"))
+            except ghcache.Paused:
+                pass
             except (gh_mod.GitHubError, ValueError) as exc:
                 unavailable.append(f"milestone issues ({exc})")
     if "milestone" in data:
@@ -438,6 +449,9 @@ def build(*, cfg, run_id=None, milestone=None, pr=None, asks_file: Path, notes_f
         unavailable.append(f"tickets (tracker is {cfg.get('tracker')}; the footer reads GitHub Issues only)")
     elif gh is not None:
         gh_data = read_github(gh, cfg["github_repo"], labels, milestone, pr, refs, unavailable)
+        notice = gh.notice() if hasattr(gh, "notice") else ""
+        if notice:
+            unavailable.append(notice)
     # An ask whose ticket or PR closed (or merged) is settled: drop it, and clear it in the file.
     kept = []
     for a in asks:

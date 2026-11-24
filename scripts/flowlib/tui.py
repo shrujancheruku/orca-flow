@@ -1,13 +1,17 @@
 """The console's curses screen. The data and the actions live in flowlib.console; this is drawing and keys.
 
 A reader thread refreshes the snapshot so a slow `gh` or `orca` call never freezes the keyboard; the
-screen redraws twice a second from the newest snapshot it has.
+screen redraws twice a second from the newest snapshot it has. Stopped and continued (Ctrl+Z then
+`fg`, or a SIGSTOP then SIGCONT), it repaints the whole screen, reads at once and says how long it was
+paused: a stopped console shows stale numbers with nothing to say they are stale.
 """
 
 from __future__ import annotations
 
 import curses
+import signal
 import threading
+import time
 
 from . import console
 
@@ -17,14 +21,17 @@ COLOURS = {"title": (curses.COLOR_CYAN, curses.A_BOLD), "head": (-1, curses.A_BO
            "keys": (-1, curses.A_REVERSE), "": (-1, 0)}
 
 
-def run(state: dict, runner, read_status, asks_file, notes_file, save, interval: float = console.REFRESH) -> None:
-    curses.wrapper(lambda scr: Screen(scr, state, runner, read_status, asks_file, notes_file, save, interval).loop())
+def run(state: dict, runner, read_status, asks_file, notes_file, save, interval: float = console.REFRESH,
+        github=None) -> None:
+    curses.wrapper(lambda scr: Screen(scr, state, runner, read_status, asks_file, notes_file, save, interval,
+                                      github).loop())
 
 
 class Screen:
-    def __init__(self, scr, state, runner, read_status, asks_file, notes_file, save, interval):
+    def __init__(self, scr, state, runner, read_status, asks_file, notes_file, save, interval, github=None):
         self.scr, self.state, self.runner = scr, state, runner
-        self.args = (read_status, asks_file, notes_file)
+        # `R` refreshes Orca at once; GitHub stays paced by `github` (console.PacedGitHub) all the same.
+        self.args = (read_status, asks_file, notes_file, github)
         self.save, self.interval = save, interval
         self.snap = None
         self.message = "reading…"
@@ -35,6 +42,8 @@ class Screen:
         self.wake = threading.Event()
         self.stop = threading.Event()
         self.attrs = {}
+        self.last_tick = time.time()  # the loop's last pass; a gap after SIGCONT is the time spent stopped
+        self.resumed = None  # seconds paused, set by the SIGCONT handler until the loop redraws
 
     # -- the reader -----------------------------------------------------------
 
@@ -123,13 +132,37 @@ class Screen:
             curses.curs_set(0)
             self.scr.timeout(500)
 
+    # -- stopped and continued --------------------------------------------------
+
+    def on_continue(self, *_):
+        """SIGCONT: note how long the loop stood still. Only flags work here; the loop does the curses calls."""
+        self.resumed = max(time.time() - self.last_tick, 0)
+        self.wake.set()  # read at once: the snapshot is as old as the pause
+
+    def resume(self):
+        gap, self.resumed = self.resumed, None
+        self.message = console.pause_note(gap)
+        try:
+            curses.reset_prog_mode()  # the shell may have put the terminal back in cooked mode
+            curses.curs_set(0)
+        except curses.error:
+            pass
+        self.scr.clear()  # repaint every cell on the next refresh, not just what changed
+
     # -- keys -----------------------------------------------------------------
 
     def loop(self):
         self.setup()
         threading.Thread(target=self.reader, daemon=True).start()
         try:
+            previous = signal.signal(signal.SIGCONT, self.on_continue)
+        except (ValueError, AttributeError, OSError):  # not the main thread, or no SIGCONT
+            previous = None
+        try:
             while True:
+                if self.resumed is not None:
+                    self.resume()
+                self.last_tick = time.time()
                 self.draw()
                 ch = self.scr.getch()
                 if ch == -1 or ch == curses.KEY_RESIZE:
@@ -139,6 +172,8 @@ class Screen:
         finally:
             self.stop.set()
             self.wake.set()
+            if previous is not None:
+                signal.signal(signal.SIGCONT, previous)
 
     def key(self, ch) -> bool:
         """Handle one key; False quits."""
