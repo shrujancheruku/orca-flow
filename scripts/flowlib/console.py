@@ -230,11 +230,33 @@ def _wrap(text: str, width: int, indent: str = "  ", max_lines: int | None = Non
     return [indent + l for l in lines]
 
 
+def _hang(text: str, width: int, indent: str = "  ", hang: str = "     ") -> list:
+    """`text` wrapped whole to `width`, first line at `indent` and the rest under its text at `hang`."""
+    return textwrap.wrap(clean(text), max(width, len(hang) + 1), initial_indent=indent,
+                         subsequent_indent=hang) or [indent]
+
+
+def coordinator_label(coord: dict, data: dict | None) -> str:
+    """The coordinator's state for the title line. Orca says "done" whenever the agent's turn ends, even
+    with workers still running or a task of its own open (QA it runs itself, dispatched to its own
+    terminal with model `coordinator`), so "done" is said only when nothing in the run is in progress."""
+    state = coord["state"]
+    if not state:
+        return "not connected" if coord["connected"] is False else "starting"
+    rows = (data or {}).get("in_progress") or []
+    if state != "done" or not rows:
+        return state
+    own = [r for r in rows if r.get("model") == "coordinator"]
+    if own:
+        return "working on " + ", ".join(" ".join(x for x in (r["ticket"], r["role"]) if x) for r in own)
+    return f"waiting on {len(rows)} in progress"
+
+
 def frame(snap: dict, width: int = 100, now: float | None = None) -> list:
     """The view as (text, style) lines; style is one of "title", "head", "warn", "dim", "keys" or ""."""
     now = now or time.time()
     coord = snap["coordinator"]
-    who = coord["state"] or ("not connected" if coord["connected"] is False else "starting")
+    who = coordinator_label(coord, snap["status"])
     age = int(max(now - snap["read_at"], 0))
     pid = f" · pid {snap['pid']}" if snap.get("pid") else ""  # the process to resume or stop, if it ever must be
     out = [(cut(f"flow · {snap['spec']} · coordinator {who} · {snap['run'] or 'no run yet'} · read {age}s ago{pid}",
@@ -273,7 +295,8 @@ def frame(snap: dict, width: int = 100, now: float | None = None) -> list:
         if asks:
             out.append((f"Questions from the coordinator ({len(asks)})", "warn"))
             for i, a in enumerate(asks[:9], 1):
-                out.append(("  " + cut(f"{i}) {status_mod.ask_line(a)}", width - 2), ""))
+                # Never cut: the founder answers from this text, so wrap it to fit the terminal.
+                out.extend((l, "") for l in _hang(f"{i}) {status_mod.ask_line(a, None)}", width))
         for s in others:
             out.append((s["heading"] if s["section"] == "pr" else f"{s['heading']} ({s['count']})", "warn"))
             out.extend(("  " + cut(clean(i), width - 2), "") for i in s["items"])

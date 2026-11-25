@@ -190,6 +190,33 @@ class Drawing(Stores):
         self.assertNotIn("dup", text)  # the footer's asks section is replaced, not repeated
         self.assertIn("#20 build sonnet 10m", text)
 
+    def test_a_long_ask_wraps_in_full_at_any_width(self):
+        words = " ".join(f"word{i}" for i in range(60))
+        status.add_ask(self.asks, words, ticket=19, where="the console")
+        for width in (100, 40, 12):
+            frame = console.frame(self.snap(footer()), width=width)
+            start = next(i for i, (t, _) in enumerate(frame) if t.startswith("  1)"))
+            block = []
+            for text, _ in frame[start:]:
+                if not text.startswith("  ") or (block and text.startswith("  2)")):
+                    break
+                block.append(text)
+            self.assertTrue(all(len(t) <= width for t in block), (width, block))
+            joined = " ".join(" ".join(block).split())
+            self.assertIn(words, joined)
+            self.assertTrue(joined.endswith("(#19) — the console"), joined)
+            self.assertNotIn("…", joined)
+            self.assertTrue(all(t.startswith("     ") for t in block[1:]), block)  # hangs under the text
+
+    def test_done_between_turns_is_not_shown_as_done_while_work_is_open(self):
+        row = lambda model, ticket="#20", role="build": {"ticket": ticket, "role": role, "model": model,
+                                                          "title": None, "dispatch": "d", "elapsed_s": 60, "flags": []}
+        title = lambda rows: console.plain(self.snap(footer(rows=rows), state="done")).splitlines()[0]
+        self.assertIn("coordinator done ·", title([]))
+        self.assertIn("coordinator waiting on 2 in progress ·", title([row("sonnet"), row("haiku", "#21")]))
+        self.assertIn("coordinator working on #50 qa ·", title([row("sonnet"), row("coordinator", "#50", "qa")]))
+        self.assertIn("coordinator working ·", console.plain(self.snap(footer(rows=[row("sonnet")]))))
+
     def test_nothing_waiting(self):
         self.assertIn("Waiting on you: nothing", console.plain(self.snap(footer())))
 
