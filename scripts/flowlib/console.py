@@ -212,11 +212,27 @@ def _hang(text: str, width: int, indent: str = "  ", hang: str = "     ") -> lis
                          subsequent_indent=hang) or [indent]
 
 
+def coordinator_label(coord: dict, data: dict | None) -> str:
+    """The coordinator's state for the title line. Orca says "done" whenever the agent's turn ends, even
+    with workers still running or a task of its own open (QA it runs itself, dispatched to its own
+    terminal with model `coordinator`), so "done" is said only when nothing in the run is in progress."""
+    state = coord["state"]
+    if not state:
+        return "not connected" if coord["connected"] is False else "starting"
+    rows = (data or {}).get("in_progress") or []
+    if state != "done" or not rows:
+        return state
+    own = [r for r in rows if r.get("model") == "coordinator"]
+    if own:
+        return "working on " + ", ".join(" ".join(x for x in (r["ticket"], r["role"]) if x) for r in own)
+    return f"waiting on {len(rows)} in progress"
+
+
 def frame(snap: dict, width: int = 100, now: float | None = None) -> list:
     """The view as (text, style) lines; style is one of "title", "head", "warn", "dim", "keys" or ""."""
     now = now or time.time()
     coord = snap["coordinator"]
-    who = coord["state"] or ("not connected" if coord["connected"] is False else "starting")
+    who = coordinator_label(coord, snap["status"])
     age = int(max(now - snap["read_at"], 0))
     out = [(cut(f"flow · {snap['spec']} · coordinator {who} · {snap['run'] or 'no run yet'} · read {age}s ago",
                 width), "title"), ("", "")]

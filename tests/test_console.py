@@ -207,6 +207,15 @@ class Drawing(Stores):
             self.assertNotIn("…", joined)
             self.assertTrue(all(t.startswith("     ") for t in block[1:]), block)  # hangs under the text
 
+    def test_done_between_turns_is_not_shown_as_done_while_work_is_open(self):
+        row = lambda model, ticket="#20", role="build": {"ticket": ticket, "role": role, "model": model,
+                                                          "title": None, "dispatch": "d", "elapsed_s": 60, "flags": []}
+        title = lambda rows: console.plain(self.snap(footer(rows=rows), state="done")).splitlines()[0]
+        self.assertIn("coordinator done ·", title([]))
+        self.assertIn("coordinator waiting on 2 in progress ·", title([row("sonnet"), row("haiku", "#21")]))
+        self.assertIn("coordinator working on #50 qa ·", title([row("sonnet"), row("coordinator", "#50", "qa")]))
+        self.assertIn("coordinator working ·", console.plain(self.snap(footer(rows=[row("sonnet")]))))
+
     def test_nothing_waiting(self):
         self.assertIn("Waiting on you: nothing", console.plain(self.snap(footer())))
 
