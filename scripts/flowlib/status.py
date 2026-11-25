@@ -42,6 +42,7 @@ from .text import BIDI, TITLE_MAX, clean, cut  # noqa: F401 - re-exported: calle
 LIST_MAX = 15  # lines kept per section; the rest is "+N more"
 TIMEOUT = 20  # seconds per subprocess: a hung CLI must not hang the turn
 DONE_STATES = {"succeeded", "failed", "cancelled", "canceled", "stopped"}
+TASK_DONE = {"completed", "failed", "cancelled", "canceled"}  # a task in one of these has no live worker
 TYPICAL_MIN_SAMPLES = 3
 
 # Matt Pocock's five triage roles, in the order flow.json's labels.triage lists them.
@@ -163,9 +164,9 @@ def in_progress(workers: list, tasks: list, now: datetime, slow_factor: float, s
     typical = typical_durations(tasks)
     rows = []
     for w in workers:
-        if str(w.get("state") or "").lower() in DONE_STATES:
-            continue
         task = by_id.get(w.get("taskId")) or {}
+        if str(w.get("state") or "").lower() in DONE_STATES or str(task.get("status") or "").lower() in TASK_DONE:
+            continue
         title = task.get("task_title") or task.get("title") or task.get("display_name") or w.get("taskId") or "?"
         parsed = role_of(title)
         started = parse_time(task.get("created_at"))
