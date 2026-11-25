@@ -140,6 +140,19 @@ class InProgressTest(Base):
         self.assertEqual(status.worker_line(rows["#2"]), "#2 build sonnet 2h00m ! slow (typical 20m)")
         self.assertEqual(status.worker_line(rows["#3"]), "#3 check haiku 10m ! no heartbeat")
 
+    def test_a_finished_task_hides_its_worker_whatever_the_worker_state(self):
+        # The coordinator ran this task in its own terminal: Orca keeps the dispatch
+        # "unsupervised" and live after the task is marked completed.
+        tasks = [task("tq", "#50 · qa · coordinator", "completed", created="2026-11-22 08:00:00",
+                      completed="2026-11-22 11:00:00"),
+                 task("tf", "#51 · build · haiku", "failed", created="2026-11-22 08:00:00"),
+                 task("tl", "#52 · build · haiku", "dispatched", created="2026-11-22 11:50:00")]
+        workers = [{"dispatchId": "dq", "taskId": "tq", "state": "unsupervised", "liveness": "live"},
+                   {"dispatchId": "df", "taskId": "tf", "state": "ready", "liveness": "live"},
+                   {"dispatchId": "dl", "taskId": "tl", "state": "running", "liveness": "live"}]
+        rows = status.in_progress(workers, tasks, NOW, 3, 120)
+        self.assertEqual([r["ticket"] for r in rows], ["#52"])
+
     def test_threshold_is_configurable(self):
         tasks = [task("t", "#9 · fix · opus", "dispatched", created="2026-11-22 11:00:00")]
         workers = [{"dispatchId": "d", "taskId": "t", "state": "running", "liveness": "live"}]
