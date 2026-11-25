@@ -27,6 +27,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - The console shows each of the coordinator's asks in full, wrapped to the terminal's width with its continuation lines under the question, instead of cutting it off at 120 characters or the screen's edge. `status.ask_line` takes `width=None` for the whole line; the status footer still cuts at 120.
 
+### Docs
+
+- The README is rewritten as a product page: what flow is (with links to Matt Pocock's skills and Orca), each feature with an image (`docs/images/`: the console, the status footer and the cost profile are drawn by the plugin's own renderers from a sample build), then setup, with the architecture diagrams and the script reference at the end. The reference text is unchanged; the stale "Status" section is gone.
+
 ## 0.9.1 - 2026-11-23
 
 ### Fixes

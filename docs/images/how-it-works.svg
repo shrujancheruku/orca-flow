@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 330" width="1280" height="330" role="img" aria-label="How flow works: a spec is split into tickets, each ticket is routed to a model, workers build in parallel, and you merge one pull request">
+  <rect width="1280" height="330" rx="20" fill="#0b1220"/>
+  <rect x="0.5" y="0.5" width="1279" height="329" rx="20" fill="none" stroke="#22304d"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <!-- connectors -->
+    <g stroke="#3b4d73" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M318 165 H340 M334 159 l6 6 -6 6"/>
+      <path d="M618 165 H640 M634 159 l6 6 -6 6"/>
+      <path d="M918 165 H940 M934 159 l6 6 -6 6"/>
+    </g>
+
+    <!-- 1 -->
+    <rect x="48" y="44" width="264" height="242" rx="14" fill="#0f1829" stroke="#22304d"/>
+    <circle cx="84" cy="84" r="16" fill="#38d6f0" fill-opacity="0.14" stroke="#38d6f0"/>
+    <text x="84" y="89.500" text-anchor="middle" font-size="15" font-weight="700" fill="#38d6f0">1</text>
+    <text x="72" y="140" font-size="21" font-weight="700" fill="#e6edf7">Write the spec</text>
+    <text font-size="14.500" fill="#8a9bb8">
+      <tspan x="72" y="172">Matt Pocock's skills turn an</tspan>
+      <tspan x="72" y="193">idea into a spec and a set of</tspan>
+      <tspan x="72" y="214">small tickets, as GitHub issues.</tspan>
+    </text>
+    <text x="72" y="258" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#38d6f0">/to-spec  /to-tickets</text>
+
+    <!-- 2 -->
+    <rect x="348" y="44" width="264" height="242" rx="14" fill="#0f1829" stroke="#22304d"/>
+    <circle cx="384" cy="84" r="16" fill="#f5b84a" fill-opacity="0.14" stroke="#f5b84a"/>
+    <text x="384" y="89.500" text-anchor="middle" font-size="15" font-weight="700" fill="#f5b84a">2</text>
+    <text x="372" y="140" font-size="21" font-weight="700" fill="#e6edf7">Size and route</text>
+    <text font-size="14.500" fill="#8a9bb8">
+      <tspan x="372" y="172">Each ticket gets a size and a</tspan>
+      <tspan x="372" y="193">risk check, then the cheapest</tspan>
+      <tspan x="372" y="214">model that can handle it.</tspan>
+    </text>
+    <text x="372" y="258" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#f5b84a">size:S → haiku</text>
+
+    <!-- 3 -->
+    <rect x="648" y="44" width="264" height="242" rx="14" fill="#0f1829" stroke="#22304d"/>
+    <circle cx="684" cy="84" r="16" fill="#c4a5ff" fill-opacity="0.14" stroke="#c4a5ff"/>
+    <text x="684" y="89.500" text-anchor="middle" font-size="15" font-weight="700" fill="#c4a5ff">3</text>
+    <text x="672" y="140" font-size="21" font-weight="700" fill="#e6edf7">Build in parallel</text>
+    <text font-size="14.500" fill="#8a9bb8">
+      <tspan x="672" y="172">Orca workers build, check and</tspan>
+      <tspan x="672" y="193">merge each ticket in its own</tspan>
+      <tspan x="672" y="214">worktree. You watch, or don't.</tspan>
+    </text>
+    <text x="672" y="258" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#c4a5ff">/flow:build</text>
+
+    <!-- 4 -->
+    <rect x="948" y="44" width="284" height="242" rx="14" fill="#0f1829" stroke="#22304d"/>
+    <circle cx="984" cy="84" r="16" fill="#4ade80" fill-opacity="0.14" stroke="#4ade80"/>
+    <text x="984" y="89.500" text-anchor="middle" font-size="15" font-weight="700" fill="#4ade80">4</text>
+    <text x="972" y="140" font-size="21" font-weight="700" fill="#e6edf7">Merge one PR</text>
+    <text font-size="14.500" fill="#8a9bb8">
+      <tspan x="972" y="172">Reviewed, fixed, green and up to</tspan>
+      <tspan x="972" y="193">date, with its cost attached.</tspan>
+      <tspan x="972" y="214">The merge button stays yours.</tspan>
+    </text>
+    <text x="972" y="258" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#4ade80">Closes #43 … #51</text>
+  </g>
+</svg>
