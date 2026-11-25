@@ -2,9 +2,10 @@ import os
 import stat
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
-from flowlib import console, notes, orca, status, tui
+from flowlib import console, github, notes, orca, status, tui
 
 TERM = "term_abc"
 PANE = "tab1:leaf1"
@@ -311,6 +312,58 @@ class Keys(Stores):
         self.assertEqual(s.log[-1], ("assistant", "Merged #20."))
         s.key(ord("l"))
         self.assertEqual(s.mode, "main")
+
+
+class Resilience(Stores):
+    def test_the_milestone_the_footer_found_is_saved_for_the_next_read(self):
+        state = self.state(run="run_new")
+        state.pop("milestone", None)
+        console.snapshot(state, fake_orca(), lambda r: footer(), self.asks, self.notes)
+        self.assertEqual(state["milestone"], "Run learnings")
+
+    def test_a_milestone_already_set_is_kept(self):
+        state = self.state(run="run_new")
+        state["milestone"] = "Given"
+        console.snapshot(state, fake_orca(), lambda r: footer(), self.asks, self.notes)
+        self.assertEqual(state["milestone"], "Given")
+
+    def test_the_header_names_the_console_pid(self):
+        snap = console.snapshot(self.state(run="run_new"), fake_orca(), lambda r: footer(), self.asks, self.notes)
+        self.assertIn(f"pid {os.getpid()}", console.frame(snap)[0][0])
+
+    def test_a_github_notice_shows_once(self):
+        class Paused:
+            def notice(self):
+                return "GitHub paused until 09:45 (rate limit; showing its last answer)"
+        snap = console.snapshot(self.state(run="run_new"), fake_orca(), lambda r: footer(), self.asks, self.notes,
+                                Paused())
+        self.assertEqual(console.plain(snap).count("GitHub paused until 09:45"), 1)
+        snap = console.snapshot(self.state(run="run_new"), fake_orca(),
+                                lambda r: footer(unavailable=[Paused().notice()]), self.asks, self.notes, Paused())
+        self.assertEqual(console.plain(snap).count("GitHub paused until 09:45"), 1)
+
+    def test_pause_note(self):
+        self.assertEqual(console.pause_note(42), "paused for 42s: redrawn, reading again")
+        self.assertEqual(console.pause_note(17 * 60 + 5), "paused for 17 min: redrawn, reading again")
+
+
+class Resuming(Stores):
+    def test_sigcont_redraws_reads_at_once_and_says_how_long(self):
+        class Scr(FakeScreen):
+            cleared = 0
+
+            def clear(self):
+                self.cleared += 1
+        s = tui.Screen(Scr(), self.state(), fake_orca(), None, self.asks, self.notes, lambda _: None, 5)
+        s.last_tick -= 600
+        s.on_continue()
+        self.assertTrue(s.wake.is_set())
+        # no terminal under the tests
+        with mock.patch.object(tui.curses, "reset_prog_mode"), mock.patch.object(tui.curses, "curs_set"):
+            s.resume()
+        self.assertEqual(s.message, "paused for 10 min: redrawn, reading again")
+        self.assertEqual(s.scr.cleared, 1)
+        self.assertIsNone(s.resumed)
 
 
 if __name__ == "__main__":

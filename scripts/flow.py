@@ -35,7 +35,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, config, console, orca, status  # noqa: E402
+from flowlib import cli, config, console, ghcache, orca, status  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
 from flowlib import notes as notes_mod  # noqa: E402
 
@@ -64,15 +64,23 @@ def load_config(args):
     return cfg
 
 
-def status_reader(cfg, milestone):
-    gh = None
+def status_reader(cfg, state, milestone=None):
+    """(read, github): `read(run_id)` is the footer for that run; `github` is the ghcache.CachedGitHub it
+    reads through (None without the GitHub tracker), so the console reads Orca every few seconds but
+    GitHub only every console.GITHUB_EVERY, shares its answers with status.py and route.py, and slows
+    or pauses as the rate limit runs low. The milestone is `milestone`, else the one saved in `state`
+    (console.snapshot saves the one the footer found), read again on every call."""
+    github = None
     if cfg is not None and cfg.get("tracker") == "github":
-        gh = gh_mod.Gh(cfg["github_repo"], runner=lambda a, s=None: gh_mod.run_gh(a, s, timeout=status.TIMEOUT))
+        github = ghcache.CachedGitHub(
+            gh_mod.Gh(cfg["github_repo"], runner=lambda a, s=None: gh_mod.run_gh(a, s, timeout=status.TIMEOUT)),
+            ghcache.cache_path("."), fresh=console.GITHUB_EVERY)
 
     def read(run_id):
-        return status.build(cfg=cfg, run_id=run_id, milestone=milestone, asks_file=status.asks_path("."),
-                            notes_file=notes_mod.notes_path("."), orca_runner=runner, gh=gh)
-    return read
+        return status.build(cfg=cfg, run_id=run_id, milestone=milestone or state.get("milestone"),
+                            asks_file=status.asks_path("."), notes_file=notes_mod.notes_path("."),
+                            orca_runner=runner, gh=github)
+    return read, github
 
 
 def coordinator_connected(state) -> bool:
@@ -122,15 +130,15 @@ def cmd_watch(args) -> int:
     if not state.get("terminal"):
         cli.die("no build to watch: start one with `flow.py start <spec> --apply`")
     cfg = load_config(args)
-    read_status = status_reader(cfg, getattr(args, "milestone", None) or state.get("milestone"))
+    read_status, github = status_reader(cfg, state, getattr(args, "milestone", None))
     asks, notes_file = status.asks_path("."), notes_mod.notes_path(".")
     if getattr(args, "once", False) or not (sys.stdin.isatty() and sys.stdout.isatty()):
-        snap = console.snapshot(state, runner, read_status, asks, notes_file)
+        snap = console.snapshot(state, runner, read_status, asks, notes_file, github)
         console.save_state(path, state)
         print(console.plain(snap))
         return 0
     from flowlib import tui  # curses only when there is a screen to draw on
-    tui.run(state, runner, read_status, asks, notes_file, lambda s: console.save_state(path, s),
+    tui.run(state, runner, read_status, asks, notes_file, lambda s: console.save_state(path, s), github=github,
             interval=getattr(args, "interval", None) or console.REFRESH)
     print("Console closed; the build goes on. `flow.py watch` opens it again.")
     return 0

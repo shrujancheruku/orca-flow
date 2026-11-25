@@ -23,6 +23,13 @@ from . import status as status_mod
 from .text import clean, cut
 
 REFRESH = 5  # seconds between reads: each read is a handful of CLI calls
+# GitHub is read far less often than Orca. One footer read costs about 23 GraphQL points (22 of them
+# the milestone's issues), so reading it every REFRESH would be ~16,500 points an hour against a
+# 5,000 limit that the coordinator and its workers share: the console alone once emptied it in under
+# 20 minutes and stalled the build's own `gh` calls.
+# flowlib.ghcache does the pacing, through a cache file that status.py and route.py share, and slows
+# down further, then pauses, as the hour's limit runs low.
+GITHUB_EVERY = 60
 LOG_LIMIT = 20
 LAST_LINES = 4  # lines of the coordinator's last message on the main view
 
@@ -167,10 +174,19 @@ def read_log(session, runner, limit: int = LOG_LIMIT) -> list:
     return out
 
 
-def snapshot(state: dict, runner, read_status, asks_file: Path, notes_file: Path) -> dict:
+def pause_note(gap: float) -> str:
+    """What the console says after it was stopped (Ctrl+Z, or a SIGSTOP) and continued `gap` seconds later."""
+    if gap < 60:
+        return f"paused for {int(gap)}s: redrawn, reading again"
+    return f"paused for {int(gap // 60)} min: redrawn, reading again"
+
+
+def snapshot(state: dict, runner, read_status, asks_file: Path, notes_file: Path, github=None) -> dict:
     """Everything one frame shows. `read_status(run_id)` is status.build bound to the config and GitHub;
     the console passes it the run it found, never None, so the footer's `run-current` fallback (which
-    would answer for whatever terminal the console runs in) is not used."""
+    would answer for whatever terminal the console runs in) is not used. `github` is the PacedGitHub
+    behind `read_status` (a ghcache.CachedGitHub), if any, so a rate-limit pause shows even when the
+    footer itself could not be read. A milestone the footer found is saved in `state`."""
     errors: list = []
     coord = read_coordinator(state, runner, errors)
     if coord["session"]:
@@ -187,7 +203,15 @@ def snapshot(state: dict, runner, read_status, asks_file: Path, notes_file: Path
             data = read_status(state["run"])
         except Exception as exc:  # noqa: BLE001 - one bad read must not take the console down
             errors.append(f"status ({type(exc).__name__}: {exc})")
+    if data and data.get("milestone") and not state.get("milestone"):
+        # Saved, so the next read asks for the milestone's issues in the first query instead of
+        # finding the milestone from the integration PR and asking again: one query a refresh, not two.
+        state["milestone"] = data["milestone"]
+    unavailable = (data or {}).get("unavailable") or []
+    if github is not None and github.notice() and github.notice() not in unavailable:
+        errors.append(github.notice())
     return {"spec": state["spec"], "run": state.get("run"), "coordinator": coord, "status": data,
+            "pid": os.getpid(),
             "asks": status_mod.live_asks(asks_file), "notes": notes_mod.live(notes_file),
             "errors": [clean(e) for e in errors], "read_at": time.time()}
 
@@ -234,7 +258,8 @@ def frame(snap: dict, width: int = 100, now: float | None = None) -> list:
     coord = snap["coordinator"]
     who = coordinator_label(coord, snap["status"])
     age = int(max(now - snap["read_at"], 0))
-    out = [(cut(f"flow · {snap['spec']} · coordinator {who} · {snap['run'] or 'no run yet'} · read {age}s ago",
+    pid = f" · pid {snap['pid']}" if snap.get("pid") else ""  # the process to resume or stop, if it ever must be
+    out = [(cut(f"flow · {snap['spec']} · coordinator {who} · {snap['run'] or 'no run yet'} · read {age}s ago{pid}",
                 width), "title"), ("", "")]
 
     out.append(("Coordinator", "head"))

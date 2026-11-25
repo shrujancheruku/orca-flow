@@ -84,6 +84,10 @@ On the first usage-limit error from any worker:
 
 Wait out the limit on the same models. Switching model to dodge a limit breaks the profile.
 
+GitHub's GraphQL limit (5,000 points an hour) is shared by you, the workers, the status footer, `route.py` and the flow console. The footer, `route.py` and the console share one cache (`<git common dir>/flow/github-cache.json`): an answer under a minute old is reused, they slow down when a fifth of the hour is left and stop reading when a twentieth is (the footer then says "GitHub paused until HH:MM"). When `route.py --lookup` exits 75, GitHub could not be read: rerun it with `--wait`, which blocks until it can route. Do not write your own `sleep`-and-retry loop or chain retries with `&&`.
+
+Never pause, stop or kill the founder's flow console or a coordinator session (`kill`, `kill -STOP`, Ctrl+Z, closing its terminal) without asking first, even to save the rate limit. A stopped console looks to the founder like a dead build. Ask them to press `q` in it instead.
+
 ## Stops
 
 A worker stops and reports with `orca orchestration send --type escalation` for one of these reasons:

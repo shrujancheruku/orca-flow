@@ -42,7 +42,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowlib import cli, config, notes, orca, status  # noqa: E402
+from flowlib import cli, config, ghcache, notes, orca, status  # noqa: E402
 from flowlib import github as gh_mod  # noqa: E402
 
 
@@ -101,8 +101,10 @@ def main() -> int:
         cfg = load_config(args)
         gh = None
         if cfg is not None and cfg.get("tracker") == "github":
-            gh = gh_mod.Gh(cfg["github_repo"],
-                           runner=lambda a, s=None: gh_mod.run_gh(a, s, timeout=status.TIMEOUT))
+            # max_sleep 5: a footer may wait out a short secondary-limit backoff, not a long one
+            gh = ghcache.CachedGitHub(gh_mod.Gh(cfg["github_repo"],
+                                                runner=lambda a, s=None: gh_mod.run_gh(a, s, timeout=status.TIMEOUT)),
+                                      ghcache.cache_path("."), max_sleep=5)
         data = status.build(cfg=cfg, run_id=args.run, milestone=args.milestone, pr=pr, asks_file=path,
                             notes_file=notes.notes_path("."),
                             orca_runner=lambda a: orca.orca(a, timeout=status.TIMEOUT), gh=gh,
