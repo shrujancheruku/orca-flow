@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1089 356" width="1089" height="356" role="img">
+<rect width="1089" height="356" rx="12" fill="#0f1829" stroke="#22304d"/>
+<path d="M0 12a12 12 0 0 1 12-12h1065a12 12 0 0 1 12 12v22H0z" fill="#16213a"/>
+<circle cx="20" cy="17" r="6" fill="#f87171"/><circle cx="40" cy="17" r="6" fill="#f5b84a"/><circle cx="60" cy="17" r="6" fill="#4ade80"/>
+<text x="544.5" y="22" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#8a9bb8">claude · /flow:build #42</text>
+<g font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace" font-size="14" xml:space="preserve">
+<text y="60"><tspan x="22.0" fill="#4ade80">⏺ </tspan><tspan x="38.9" fill="#e6edf7">#46 passed its check and is merged (4 of 9). #45 is with the checker.</tspan></text>
+<text y="81"><tspan x="22.0" fill="#e6edf7">  I need one answer from you before I can start #50.</tspan></text>
+<text y="123"><tspan x="22.0" fill="#38d6f0" font-weight="700">In progress (4)</tspan></text>
+<text y="144"><tspan x="22.0" fill="#e6edf7">  #51 build opus 1h04m</tspan></text>
+<text y="165"><tspan x="22.0" fill="#e6edf7">  #47 build sonnet 38m</tspan></text>
+<text y="186"><tspan x="22.0" fill="#e6edf7">  #49 build haiku 12m</tspan></text>
+<text y="207"><tspan x="22.0" fill="#e6edf7">  #45 check haiku 3m</tspan></text>
+<text y="228"><tspan x="22.0" fill="#8a9bb8">Playlists v1: 4/9 integrated, 3 in progress, 1 ready next, 0 blocked, 1 waiting on you; 1 note carried to the review</tspan></text>
+<text y="249"><tspan x="22.0" fill="#e6edf7" font-weight="700">Waiting on you</tspan></text>
+<text y="270"><tspan x="22.0" fill="#f87171" font-weight="700">Ready for you (1)</tspan></text>
+<text y="291"><tspan x="22.0" fill="#e6edf7">  #52 Pick the empty-state illustration for a playlist with no tracks</tspan></text>
+<text y="312"><tspan x="22.0" fill="#60a5fa" font-weight="700">Coordinator asks (1)</tspan></text>
+<text y="333"><tspan x="22.0" fill="#e6edf7">  [a3f1] Ticket #50 says removed playlists are archived, the spec says deleted. Which one do you want? (#50) — reply here</tspan></text>
+</g></svg>
