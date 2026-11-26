@@ -49,13 +49,12 @@ TRIAGE_ROLES = ("needs-triage", "needs-info", "ready-for-agent", "ready-for-huma
 
 SECTIONS = (  # (id, heading, plain marker), in the order they print
     ("human", "Ready for you", "\U0001f7e5"),
-    ("human-outside", "Ready for you, outside the milestone", "\U0001f7e7"),
     ("needs-info", "Needs info", "\U0001f7e8"),
     ("asks", "Coordinator asks", "\U0001f7e6"),
     ("worker-questions", "Worker questions not yet handled", "\U0001f7ea"),
     ("pr", "Integration PR", "\U0001f7e9"),
 )
-ANSI = {"human": 31, "human-outside": 33, "needs-info": 33, "asks": 34, "worker-questions": 35, "pr": 32}
+ANSI = {"human": 31, "needs-info": 33, "asks": 34, "worker-questions": 35, "pr": 32}
 NOTHING = "Waiting on you: nothing"
 
 
@@ -374,25 +373,22 @@ def waiting(gh_data: dict, labels: dict, asks: list, questions: list, tly) -> li
     sections = {}
     owner = gh_data.get("owner")
     if owner is not None:
+        if milestone:
+            # A build is about its milestone: tickets outside it are not this run's to wait on.
+            owner = [n for n in owner if (n.get("milestone") or {}).get("title") == milestone]
         human = [n for n in owner if labels["human"] in label_names(n)]
         info = [n for n in owner if labels["info"] in label_names(n)]
-        inside = [n for n in human if milestone and (n.get("milestone") or {}).get("title") == milestone]
-        outside = [n for n in human if n not in inside]
-        more = max(gh_data.get("owner_count", 0) - len(owner), 0)
-        if inside:
-            sections["human"] = [issue_line(n) for n in inside]
-        if outside:
-            if milestone:
-                sections["human-outside"] = [issue_line(n, f" ({(n.get('milestone') or {}).get('title') or 'no milestone'})")
-                                             for n in outside]
-            else:
-                sections["human"] = [issue_line(n) for n in outside]
+        truncated = gh_data.get("owner_count", 0) > len(gh_data.get("owner") or [])
+        if human:
+            sections["human"] = [issue_line(n) for n in human]
         if info:
-            sections["needs-info"] = [issue_line(n, "" if not milestone or (n.get("milestone") or {}).get("title") == milestone
-                                                 else " (outside the milestone)") for n in info]
-        if more:
-            last = "needs-info" if info else "human-outside" if "human-outside" in sections else "human"
-            sections.setdefault(last, []).append(f"+{more} more not read (the query keeps 50)")
+            sections["needs-info"] = [issue_line(n) for n in info]
+        if truncated:
+            last = "needs-info" if info else "human"
+            more = gh_data["owner_count"] - len(gh_data["owner"])
+            note = (f"+{more} more not read across the repo (the query keeps 50); some may be in this milestone"
+                    if milestone else f"+{more} more not read (the query keeps 50)")
+            sections.setdefault(last, []).append(note)
     if asks:
         sections["asks"] = [ask_line(a) for a in asks]
     if questions:

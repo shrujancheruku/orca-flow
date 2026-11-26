@@ -193,19 +193,28 @@ class WaitingTest(Base):
         data = self.build(fake_orca(tasks=tasks, messages=messages),
                           fake_gh(owner=owner, prs=[pr_node(draft=False)]), milestone="M1")
         self.assertEqual([s["section"] for s in data["waiting"]],
-                         ["human", "human-outside", "needs-info", "asks", "worker-questions", "pr"])
+                         ["human", "needs-info", "asks", "worker-questions", "pr"])
         out = self.plain(data)
         heads = [l for l in out if not l.startswith(" ")]
         self.assertEqual(heads[heads.index("Waiting on you"):], [
-            "Waiting on you", "\U0001f7e5 Ready for you (1)", "\U0001f7e7 Ready for you, outside the milestone (1)",
+            "Waiting on you", "\U0001f7e5 Ready for you (1)",
             "\U0001f7e8 Needs info (1)", "\U0001f7e6 Coordinator asks (1)",
             "\U0001f7ea Worker questions not yet handled (1)", "\U0001f7e9 Integration PR"])
-        self.assertIn("  #9 outside (M0)", out)
+        self.assertNotIn("  #9 outside", out)
+        self.assertNotIn("  #9 outside (M0)", out)
         self.assertIn("  #3 build: question: Which ref?", out)
 
         status.done_ask(self.asks, ask)
         data = self.build(gh_runner=fake_gh(owner=owner[2:]), milestone="M1")
         self.assertEqual([s["section"] for s in data["waiting"]], ["needs-info"])
+
+    def test_with_a_milestone_tickets_outside_it_are_left_out(self):
+        owner = [issue(9, "elsewhere", ["ready-for-human"], milestone="M0"),
+                 issue(6, "unplanned", ["ready-for-human"], milestone=""),
+                 issue(5, "other question", ["needs-info"], milestone="M0")]
+        data = self.build(gh_runner=fake_gh(owner=owner), milestone="M1")
+        self.assertEqual(data["waiting"], [])
+        self.assertIn("Waiting on you: nothing", self.plain(data))
 
     def test_without_a_milestone_every_ready_for_human_ticket_is_one_section(self):
         owner = [issue(9, "a", ["ready-for-human"], milestone="M0"), issue(8, "b", ["ready-for-human"], milestone="")]
