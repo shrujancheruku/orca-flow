@@ -35,8 +35,10 @@ def fake_orca(workers=(), tasks=(), messages=(), gates=(), fail=(), run=RUN):
     return run_orca
 
 
-def issue(n, title, labels=(), state="OPEN", blockers=(), milestone=None):
+def issue(n, title, labels=(), state="OPEN", blockers=(), milestone=None, body=None):
     node = {"number": n, "title": title, "state": state, "labels": {"nodes": [{"name": l} for l in labels]}}
+    if body is not None:
+        node["body"] = body
     if blockers is not None:
         node["blockedBy"] = {"nodes": list(blockers)}
     if milestone is not None:
@@ -53,7 +55,7 @@ def pr_node(n=50, draft=True, milestone="M1", checks=("SUCCESS",), state="OPEN",
             "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS", "contexts": {"nodes": contexts}}}}]}}
 
 
-def fake_gh(milestone_issues=(), owner=(), prs=(), refs=None, fail=False):
+def fake_gh(milestone_issues=(), owner=(), prs=(), refs=None, fail=False, others=()):
     """A gh runner for the footer's GraphQL reads; it answers each part the query asks for."""
     queries = []
 
@@ -71,6 +73,9 @@ def fake_gh(milestone_issues=(), owner=(), prs=(), refs=None, fail=False):
             for n, state in (refs or {}).items():
                 if f"r{n}:" in q:
                     repo[f"r{n}"] = {"state": state}
+            for node in others:
+                if f"b{node['number']}:" in q:
+                    repo[f"b{node['number']}"] = node
             data["repository"] = repo
         if "milestone: search" in q:
             data["milestone"] = {"issueCount": len(milestone_issues), "nodes": list(milestone_issues)}
@@ -164,6 +169,39 @@ class InProgressTest(Base):
         self.assertIn("M1: 2/7 integrated, 1 in progress, 1 ready next, 1 blocked, 2 waiting on you",
                       self.plain(data))
 
+    def test_body_blockers_are_read_from_lines_and_the_blocked_by_section(self):
+        body = ("## What to build\n\nSee #12 for context.\n\n"
+                "Blocked by: #3, #4\n\n```\nBlocked by #99\n```\n\n"
+                "## Blocked by\n\n- Blocked by #5\n- #6 (the layout)\n\n## Notes\n\n- #7 is related\n")
+        self.assertEqual(status.body_blockers(body), [3, 4, 5, 6])
+        self.assertEqual(status.body_blockers("## Blocked by\n\nNone.\n"), [])
+        self.assertEqual(status.body_blockers(None), [])
+
+    def test_body_blockers_count_in_the_tally(self):
+        section = "## Blocked by\n\n- Blocked by #{}\n"
+        issues = [issue(1, "a", ["ready-for-agent", "integrated"]),
+                  issue(2, "b", ["ready-for-agent"]),
+                  issue(3, "c", ["ready-for-agent"], body=section.format(1)),
+                  issue(4, "d", ["ready-for-agent"], body=section.format(2)),
+                  issue(5, "e", ["ready-for-agent"], body=section.format(40)),
+                  issue(6, "f", ["ready-for-agent"], body=section.format(41)),
+                  issue(7, "g", ["ready-for-agent"], body=section.format(42))]
+        others = [issue(40, "outside, closed", state="CLOSED", blockers=None),
+                  issue(41, "outside, open", ["ready-for-agent"], blockers=None)]
+        gh = fake_gh(milestone_issues=issues, others=others)
+        data = self.build(gh_runner=gh, milestone="M1")
+        # 2 and 3 (its blocker integrated) and 5 (its blocker closed) are ready; 4 waits on 2,
+        # 6 on an open issue outside the milestone, 7 on one the footer could not read.
+        self.assertEqual((data["tally"]["ready_next"], data["tally"]["blocked"]), (3, 3))
+        self.assertTrue(any("b40:" in q and "b41:" in q and "b42:" in q for q in gh.queries))
+
+    def test_no_extra_read_when_no_body_names_a_blocker_outside_the_milestone(self):
+        issues = [issue(1, "a", ["ready-for-agent"]), issue(2, "b", ["ready-for-agent"], body="Blocked by #1")]
+        gh = fake_gh(milestone_issues=issues)
+        data = self.build(gh_runner=gh, milestone="M1")
+        self.assertEqual((data["tally"]["ready_next"], data["tally"]["blocked"]), (1, 1))
+        self.assertFalse(any(" b1:" in q for q in gh.queries))
+
     def test_a_worker_on_the_integration_pr_shows_beside_the_tally(self):
         tasks = [task("t50", "#50 · fix · opus", "dispatched", created="2026-11-22 11:50:00")]
         workers = [{"dispatchId": "d", "taskId": "t50", "state": "running", "liveness": "live"}]
@@ -193,19 +231,28 @@ class WaitingTest(Base):
         data = self.build(fake_orca(tasks=tasks, messages=messages),
                           fake_gh(owner=owner, prs=[pr_node(draft=False)]), milestone="M1")
         self.assertEqual([s["section"] for s in data["waiting"]],
-                         ["human", "human-outside", "needs-info", "asks", "worker-questions", "pr"])
+                         ["human", "needs-info", "asks", "worker-questions", "pr"])
         out = self.plain(data)
         heads = [l for l in out if not l.startswith(" ")]
         self.assertEqual(heads[heads.index("Waiting on you"):], [
-            "Waiting on you", "\U0001f7e5 Ready for you (1)", "\U0001f7e7 Ready for you, outside the milestone (1)",
+            "Waiting on you", "\U0001f7e5 Ready for you (1)",
             "\U0001f7e8 Needs info (1)", "\U0001f7e6 Coordinator asks (1)",
             "\U0001f7ea Worker questions not yet handled (1)", "\U0001f7e9 Integration PR"])
-        self.assertIn("  #9 outside (M0)", out)
+        self.assertNotIn("  #9 outside", out)
+        self.assertNotIn("  #9 outside (M0)", out)
         self.assertIn("  #3 build: question: Which ref?", out)
 
         status.done_ask(self.asks, ask)
         data = self.build(gh_runner=fake_gh(owner=owner[2:]), milestone="M1")
         self.assertEqual([s["section"] for s in data["waiting"]], ["needs-info"])
+
+    def test_with_a_milestone_tickets_outside_it_are_left_out(self):
+        owner = [issue(9, "elsewhere", ["ready-for-human"], milestone="M0"),
+                 issue(6, "unplanned", ["ready-for-human"], milestone=""),
+                 issue(5, "other question", ["needs-info"], milestone="M0")]
+        data = self.build(gh_runner=fake_gh(owner=owner), milestone="M1")
+        self.assertEqual(data["waiting"], [])
+        self.assertIn("Waiting on you: nothing", self.plain(data))
 
     def test_without_a_milestone_every_ready_for_human_ticket_is_one_section(self):
         owner = [issue(9, "a", ["ready-for-human"], milestone="M0"), issue(8, "b", ["ready-for-human"], milestone="")]

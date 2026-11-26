@@ -19,8 +19,7 @@ finished tasks in this run (`slow_minutes` when there are fewer than 3), then
 the milestone's tally.
 
 Waiting on you, in this order, each left out when empty: ready-for-human
-tickets in the milestone, ready-for-human tickets outside it, needs-info
-tickets, the coordinator's asks, worker questions and escalations Orca has
+tickets, then needs-info tickets (only the milestone's when there is one), the coordinator's asks, worker questions and escalations Orca has
 not marked handled (and pending gates), and the integration PR once it is out
 of draft or every milestone ticket is integrated. Nothing: `Waiting on you:
 nothing`.
