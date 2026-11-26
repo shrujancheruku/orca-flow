@@ -13,6 +13,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixes
 
+- The status footer's tally reads a ticket's blockers from its body too (`Blocked by: #<n>` and `- Blocked by #<n>` lines, and `#<n>` items under a `## Blocked by` heading), not only GitHub's native dependencies. Before, a repo that keeps blockers as text, as the issue template writes them, saw every blocked ticket counted as "ready next". A blocker outside the milestone is read in one more query; one it cannot read counts as open.
 - The status footer shows only the build milestone's `ready-for-human` and `needs-info` tickets. Before, it also listed every such ticket outside the milestone ("Ready for you, outside the milestone"), which buried the build's own state under unrelated backlog. Without a milestone it still lists every open one.
 - The flow console reads GitHub at most once a minute; Orca is still read every five seconds. Each footer read costs about 23 GraphQL points, so reading GitHub every five seconds came to about 16,500 points an hour against a limit of 5,000 that the coordinator and its workers share. The console emptied it in under 20 minutes, and the build's own `gh` calls and `route.py` stalled.
 

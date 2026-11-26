@@ -14,7 +14,8 @@ Sources, each read at most once per footer:
   gh     one GraphQL read (two when the milestone comes from the integration
          PR), through the cache in flowlib.ghcache that the console and route.py
          share, so an answer under a minute old is reused and the rate limit is
-         watched: the milestone's issues with their labels and native blockers, the
+         watched: the milestone's issues with their labels, bodies and native blockers
+         (a third read fetches a blocker a body names outside the milestone), the
          open issues labelled ready-for-human or needs-info, the integration
          PR with its checks, and the state of each ask's ticket or PR. Every
          query is label-, milestone- or number-filtered, never the backlog.
@@ -28,6 +29,7 @@ prints: this is a footer and must never break a turn.
 from __future__ import annotations
 
 import json
+import re
 import statistics
 from datetime import datetime, timezone
 from pathlib import Path
@@ -230,7 +232,7 @@ def _search(alias: str, query: str, fields: str, first: int = 100) -> str:
 
 
 def milestone_part(repo: str, milestone: str) -> str:
-    fields = f"{ISSUE_FIELDS} blockedBy(first: 20) {{ nodes {{ {ISSUE_FIELDS} }} }}"
+    fields = f"{ISSUE_FIELDS} body blockedBy(first: 20) {{ nodes {{ {ISSUE_FIELDS} }} }}"
     return _search("milestone", f"repo:{repo} is:issue milestone:{_q(milestone)}", fields)
 
 
@@ -299,10 +301,46 @@ def check_counts(pr: dict) -> dict:
     return counts
 
 
-def tally(issues: list, live: set, labels: dict) -> dict:
-    """Integrated / in progress / ready next / blocked / waiting on you, from the milestone's issues."""
+_BLOCKED_LINE = re.compile(r"^\s*(?:[-*+]\s*)?(?:\[[ xX]\]\s*)?blocked by\b:?(.*)$", re.IGNORECASE)
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
+_REF = re.compile(r"(?<![\w/])#(\d+)\b")
+
+
+def body_blockers(body) -> list:
+    """Issue numbers a body names as blockers, for repos that keep them as text, not native dependencies.
+
+    Reads `Blocked by: #1, #2` and `- Blocked by #1` lines anywhere outside code fences, and the
+    `#<n>` list items under a `## Blocked by` heading. `Blocked by: None` names nothing."""
+    found, under, fence = [], False, False
+    for line in (body or "").splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        head = _HEADING.match(line)
+        if head:
+            under = head.group(1).strip().rstrip(":").lower() == "blocked by"
+            continue
+        m = _BLOCKED_LINE.match(line)
+        text = m.group(1) if m else line if under and re.match(r"^\s*[-*+]\s", line) else ""
+        for n in _REF.findall(text):
+            if int(n) not in found:
+                found.append(int(n))
+    return found
+
+
+def tally(issues: list, live: set, labels: dict, others=None) -> dict:
+    """Integrated / in progress / ready next / blocked / waiting on you, from the milestone's issues.
+
+    A ticket's blockers are its native dependencies and the ones its body names (`body_blockers`),
+    looked up among the milestone's issues and `others` (issue number -> node, for blockers outside
+    it). A blocker the footer could not read counts as open."""
     def done(node):
         return node.get("state") == "CLOSED" or labels["integrated"] in label_names(node)
+
+    known = dict(others or {})
+    known.update({i["number"]: i for i in issues if "number" in i})
 
     out = {"total": len(issues), "integrated": 0, "in_progress": 0, "ready_next": 0, "blocked": 0,
            "waiting_on_you": 0, "other": 0}
@@ -315,7 +353,9 @@ def tally(issues: list, live: set, labels: dict) -> dict:
         elif names & {labels["human"], labels["info"]}:
             out["waiting_on_you"] += 1
         elif labels["agent"] in names:
-            blockers = ((i.get("blockedBy") or {}).get("nodes") or [])
+            blockers = list((i.get("blockedBy") or {}).get("nodes") or [])
+            blockers += [known.get(n, {"number": n, "state": "UNKNOWN"}) for n in body_blockers(i.get("body"))
+                         if n != i.get("number")]
             out["blocked" if any(not done(b) for b in blockers) else "ready_next"] += 1
         else:
             out["other"] += 1
@@ -352,7 +392,27 @@ def read_github(gh, repo, labels, milestone, pr_number, refs, unavailable: list)
                 unavailable.append(f"milestone issues ({exc})")
     if "milestone" in data:
         out["issues"] = [n for n in (data["milestone"] or {}).get("nodes") or [] if n]
+        out["others"] = read_other_blockers(gh, repo, out["issues"], unavailable)
     return out
+
+
+def read_other_blockers(gh, repo: str, issues: list, unavailable: list) -> dict:
+    """The state and labels of each blocker a milestone body names that is outside the milestone."""
+    inside = {i.get("number") for i in issues}
+    wanted = sorted({n for i in issues for n in body_blockers(i.get("body")) if n not in inside})
+    if not wanted:
+        return {}
+    owner, name = repo.split("/")
+    parts = " ".join(f"b{n}: issue(number: {n}) {{ {ISSUE_FIELDS} }}" for n in wanted[:50])
+    try:
+        data = graphql(gh, f"query {{ repository(owner: {_q(owner)}, name: {_q(name)}) {{ {parts} }} }}")
+    except ghcache.Paused:
+        return {}
+    except (gh_mod.GitHubError, ValueError) as exc:
+        unavailable.append(f"blockers outside the milestone ({exc})")
+        return {}
+    repo_data = data.get("repository") or {}
+    return {n: repo_data[f"b{n}"] for n in wanted if repo_data.get(f"b{n}")}
 
 
 # -- the footer ---------------------------------------------------------------
@@ -459,7 +519,8 @@ def build(*, cfg, run_id=None, milestone=None, pr=None, asks_file: Path, notes_f
             kept.append(a)
 
     live_tickets = {r["ticket"] for r in rows if r["ticket"]}
-    tly = tally(gh_data["issues"], live_tickets, labels) if gh_data["issues"] is not None else None
+    tly = (tally(gh_data["issues"], live_tickets, labels, gh_data.get("others"))
+           if gh_data["issues"] is not None else None)
     # Review, fix and merge workers run on the integration PR's number, which is no milestone
     # ticket: without this the tally reads "0 in progress" under a live worker.
     off_ticket = 0
